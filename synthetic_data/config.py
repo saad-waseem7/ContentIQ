@@ -1,0 +1,66 @@
+NICHES = ["fitness", "food", "tech"]
+
+USERS_PER_NICHE = 5
+MIN_POSTS_PER_USER = 150
+MAX_POSTS_PER_USER = 200
+
+METRIC_SNAPSHOT_DAYS_AFTER_POST = [1, 3, 7]
+
+# Platforms available per niche, weighted — arbitrary but plausible per-niche skew,
+# not stated in PRD, kept simple rather than exhaustively researched
+NICHE_PLATFORMS = {
+    "fitness": {"instagram": 0.4, "youtube_shorts": 0.3, "tiktok": 0.3},
+    "food": {"instagram": 0.5, "youtube": 0.2, "tiktok": 0.3},
+    "tech": {"youtube": 0.4, "x": 0.3, "linkedin": 0.3},
+}
+
+# Which content_types a platform realistically posts, weighted
+PLATFORM_CONTENT_TYPES = {
+    "instagram": {"image": 0.35, "carousel": 0.35, "short_video": 0.3},
+    "youtube": {"long_video": 0.7, "short_video": 0.3},
+    "youtube_shorts": {"short_video": 1.0},
+    "tiktok": {"short_video": 1.0},
+    "x": {"text": 0.5, "image": 0.3, "short_video": 0.2},
+    "linkedin": {"text": 0.5, "image": 0.3, "carousel": 0.2},
+}
+
+HOOK_TYPES = ["question", "bold_claim", "listicle", "story", "none"]
+
+TOPIC_TAGS_BY_NICHE = {
+    "fitness": ["transformation", "workout_routine", "nutrition_tips", "recovery", "mindset"],
+    "food": ["quick_recipes", "meal_prep", "restaurant_review", "baking", "healthy_eating"],
+    "tech": ["product_review", "coding_tips", "ai_news", "gadget_unboxing", "career_advice"],
+}
+
+# Content-type performance effects: multiplier applied to specific metrics
+# (instagram, carousel) -> saves-heavy; (youtube_shorts/tiktok, short_video) -> view-heavy
+CONTENT_TYPE_EFFECTS = {
+    ("instagram", "carousel"): {"saves_multiplier": 2.5},
+    ("youtube_shorts", "short_video"): {"views_multiplier": 3.0},
+    ("tiktok", "short_video"): {"views_multiplier": 3.0},
+}
+
+# Time-of-day/day-of-week effect: Tue/Thu 7-9pm over-indexes (matches §9's own example)
+BOOST_WEEKDAYS = [1, 3]  # Monday=0 -> Tuesday=1, Thursday=3
+BOOST_HOURS = range(19, 21)  # 7pm-9pm
+TIME_BOOST_MULTIPLIER = 1.4
+
+# The hidden planted signal: (niche, hook_type, topic_tag) -> multiplier
+# Documented per Checkpoint 9 design
+PLANTED_SIGNAL = {
+    "fitness": {"hook_type": "story", "topic_tag": "transformation", "multiplier": 3.0},
+    "food": {"hook_type": "listicle", "topic_tag": "quick_recipes", "multiplier": 3.0},
+    "tech": {"hook_type": "bold_claim", "topic_tag": "product_review", "multiplier": 3.0},
+}
+
+# Pareto shape parameter for power-law base performance draw.
+# Lower alpha = heavier tail (more extreme viral outliers). 1.5 is a standard
+# choice for social-media-style engagement power laws (not derived from real data,
+# since this is synthetic — picked to produce a visibly heavy tail without
+# absurd outliers that would break downstream aggregate stats)
+PARETO_ALPHA = 1.5
+
+BASE_REACH_MIN = 500
+BASE_REACH_MAX = 50000
+
+API_BASE_URL = "http://localhost:8000"
