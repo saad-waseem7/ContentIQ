@@ -5,4 +5,5 @@ psycopg2-binary==2.9.10
 pydantic-settings==2.7.1
 alembic==1.14.0
 pgvector==0.3.6
+pytest==8.3.4
 mlflow-skinny==2.19.0
