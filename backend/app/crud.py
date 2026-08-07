@@ -1,9 +1,9 @@
 import uuid
-
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
-
 from app import models, schemas
-
+from sqlalchemy import update
 
 def get_or_create_user(db: Session, user_in: schemas.UserIngest) -> models.User:
     if user_in.id is not None:
@@ -61,3 +61,38 @@ def create_content_with_metrics(db: Session, content_in: schemas.ContentIngest) 
     db.flush()
 
     return content, metrics_created
+
+def upsert_user_baseline(
+    db: Session,
+    user_id: uuid.UUID,
+    platform: str,
+    content_type: str,
+    rolling_median_perf: float,
+    p25: float,
+    p75: float,
+) -> None:
+    stmt = pg_insert(models.UserBaseline).values(
+        user_id=user_id,
+        platform=platform,
+        content_type=content_type,
+        rolling_median_perf=rolling_median_perf,
+        p25=p25,
+        p75=p75,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["user_id", "platform", "content_type"],
+        set_={
+            "rolling_median_perf": stmt.excluded.rolling_median_perf,
+            "p25": stmt.excluded.p25,
+            "p75": stmt.excluded.p75,
+            "updated_at": func.now(),
+        },
+    )
+    db.execute(stmt)
+
+
+def bulk_update_content_embeddings(db: Session, id_to_embedding: dict[uuid.UUID, list[float]]) -> None:
+    for content_id, embedding in id_to_embedding.items():
+        db.execute(
+            update(models.Content).where(models.Content.id == content_id).values(caption_embedding=embedding)
+        )    

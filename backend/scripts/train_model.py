@@ -1,0 +1,102 @@
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+import mlflow
+
+from app.config import settings
+from ml import config as cfg
+from ml.data_prep import (
+    content_type_average_baseline,
+    load_labeled_feature_table,
+    prepare_model_matrix,
+    temporal_train_test_split,
+)
+from ml.evaluate import classification_metrics, spearman_within_user
+from ml.models import train_classifier, train_regressor
+
+FEATURES_PATH = Path(__file__).resolve().parents[1] / "data" / "features.parquet"
+
+
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def main():
+    df = load_labeled_feature_table(str(FEATURES_PATH))
+    data_hash = file_sha256(FEATURES_PATH)
+
+    X_full = prepare_model_matrix(df)  # categories fixed across full dataset, see design note above
+    train_df, test_df = temporal_train_test_split(df)
+    X_train, X_test = X_full.loc[train_df.index], X_full.loc[test_df.index]
+
+    y_class_train = train_df[cfg.CLASSIFIER_TARGET].astype(int)
+    y_class_test = test_df[cfg.CLASSIFIER_TARGET].astype(int)
+    y_reg_train = train_df[cfg.REGRESSOR_TARGET]
+    y_reg_test = test_df[cfg.REGRESSOR_TARGET]
+
+    classifier = train_classifier(X_train, y_class_train)
+    regressor = train_regressor(X_train, y_reg_train)
+
+    class_proba = classifier.predict_proba(X_test)[:, 1]
+    reg_pred = regressor.predict(X_test)
+
+    model_class_metrics = classification_metrics(y_class_test, class_proba)
+    reg_eval_df = test_df[["user_id"]].copy()
+    reg_eval_df["actual"] = y_reg_test.values
+    reg_eval_df["predicted"] = reg_pred
+    model_spearman = spearman_within_user(reg_eval_df, "actual", "predicted")
+
+    baseline_class_pred = content_type_average_baseline(train_df, test_df, cfg.CLASSIFIER_TARGET)
+    baseline_reg_pred = content_type_average_baseline(train_df, test_df, cfg.REGRESSOR_TARGET)
+    baseline_class_metrics = classification_metrics(y_class_test, baseline_class_pred)
+    baseline_reg_eval_df = test_df[["user_id"]].copy()
+    baseline_reg_eval_df["actual"] = y_reg_test.values
+    baseline_reg_eval_df["predicted"] = baseline_reg_pred.values
+    baseline_spearman = spearman_within_user(baseline_reg_eval_df, "actual", "predicted")
+
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    mlflow.set_experiment(cfg.MLFLOW_EXPERIMENT_NAME)
+
+    with mlflow.start_run(run_name="week4-lightgbm-baseline"):
+        mlflow.log_param("data_snapshot_hash", data_hash)
+        mlflow.log_param("n_train_rows", len(train_df))
+        mlflow.log_param("n_test_rows", len(test_df))
+        mlflow.log_params({f"clf_{k}": v for k, v in cfg.LGBM_CLASSIFIER_PARAMS.items()})
+        mlflow.log_params({f"reg_{k}": v for k, v in cfg.LGBM_REGRESSOR_PARAMS.items()})
+
+        mlflow.log_metric("classifier_roc_auc", model_class_metrics["roc_auc"])
+        mlflow.log_metric("classifier_pr_auc", model_class_metrics["pr_auc"])
+        mlflow.log_metric("classifier_baseline_roc_auc", baseline_class_metrics["roc_auc"])
+        mlflow.log_metric("regressor_spearman_rho", model_spearman)
+        mlflow.log_metric("regressor_baseline_spearman_rho", baseline_spearman)
+
+        mlflow.lightgbm.log_model(classifier, artifact_path="classifier")
+        mlflow.lightgbm.log_model(regressor, artifact_path="regressor")
+
+        summary = {
+            "classifier": model_class_metrics,
+            "classifier_baseline": baseline_class_metrics,
+            "regressor_spearman": model_spearman,
+            "regressor_baseline_spearman": baseline_spearman,
+        }
+        summary_path = Path("/tmp/week4_summary.json")
+        summary_path.write_text(json.dumps(summary, indent=2))
+        mlflow.log_artifact(str(summary_path))
+
+    print("\n=== Week 4 acceptance check (§3) ===")
+    print(f"ROC-AUC: {model_class_metrics['roc_auc']:.4f} (need >= {cfg.ROC_AUC_THRESHOLD}) -> "
+          f"{'PASS' if model_class_metrics['roc_auc'] >= cfg.ROC_AUC_THRESHOLD else 'FAIL'}")
+    print(f"Spearman rho: {model_spearman:.4f} (need >= {cfg.SPEARMAN_THRESHOLD}) -> "
+          f"{'PASS' if model_spearman >= cfg.SPEARMAN_THRESHOLD else 'FAIL'}")
+    print(f"Beats baseline ROC-AUC ({baseline_class_metrics['roc_auc']:.4f}): "
+          f"{'PASS' if model_class_metrics['roc_auc'] > baseline_class_metrics['roc_auc'] else 'FAIL'}")
+    print(f"Beats baseline Spearman ({baseline_spearman:.4f}): "
+          f"{'PASS' if model_spearman > baseline_spearman else 'FAIL'}")
+
+
+if __name__ == "__main__":
+    main()

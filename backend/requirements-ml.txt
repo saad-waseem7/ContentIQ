@@ -1,0 +1,11 @@
+pandas==2.2.3
+numpy==2.2.1
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1
+sentence-transformers==3.3.1
+vaderSentiment==3.3.1
+pyarrow==18.1.0
+lightgbm==4.5.0
+scikit-learn==1.6.0
+scipy==1.14.1
+shap==0.46.0

@@ -21,6 +21,21 @@ PLATFORMS = ("youtube", "youtube_shorts", "instagram", "tiktok", "x", "linkedin"
 CONTENT_TYPES = ("short_video", "long_video", "image", "carousel", "text")
 HOOK_TYPES = ("question", "bold_claim", "listicle", "story", "none")
 
+class UserBaseline(Base):
+    __tablename__ = "user_baselines"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    platform = Column(Text, primary_key=True)
+    content_type = Column(Text, primary_key=True)
+    rolling_median_perf = Column(Float, nullable=True)
+    p25 = Column(Float, nullable=True)
+    p75 = Column(Float, nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(f"platform IN {PLATFORMS}", name="ck_user_baselines_platform"),
+        CheckConstraint(f"content_type IN {CONTENT_TYPES}", name="ck_user_baselines_content_type"),
+    )
 
 class User(Base):
     __tablename__ = "users"

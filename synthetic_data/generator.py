@@ -119,6 +119,9 @@ def ingest(payload: dict) -> dict:
 
 
 def run():
+    random.seed(42)
+    np.random.seed(42)
+
     summary = {"users": 0, "channels": 0, "content": 0, "metrics": 0}
 
     for niche in cfg.NICHES:
