@@ -1,6 +1,6 @@
 """
 Week 4 data prep: load the Week 3 feature table, drop unlabeled rows, split
-temporally per user (§8.2: train = earlier posts, test = later posts), and
+temporally per user (PRD: train = earlier posts, test = later posts), and
 build LightGBM-ready X matrices with correct categorical dtypes.
 
 Kept separate from train.py so split/leakage-exclusion logic is independently
@@ -35,7 +35,7 @@ def temporal_train_test_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFr
 
 def prepare_model_matrix(df: pd.DataFrame) -> pd.DataFrame:
     """Selects ONLY leakage-safe feature columns, sets pandas 'category' dtype
-    for LightGBM's native categorical handling (§8.1)."""
+    for LightGBM's native categorical handling."""
     df = df.copy()
     df["primary_topic_tag"] = df["topic_tags"].apply(lambda tags: tags[0] if tags is not None and len(tags) > 0 else "none")
 
@@ -48,9 +48,7 @@ def prepare_model_matrix(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def content_type_average_baseline(train_df: pd.DataFrame, test_df: pd.DataFrame, target_col: str) -> pd.Series:
-    """Naive baseline per §3: predict the content-type average. Computed from
-    TRAIN only — computing it from test data would itself be a leakage bug,
-    just in the evaluation harness instead of the model."""
     ct_means = train_df.groupby("content_type")[target_col].mean()
-    global_mean = train_df[target_col].mean()  # fallback if a content_type is unseen in train
-    return test_df["content_type"].map(ct_means).fillna(global_mean)
+    global_mean = train_df[target_col].mean()
+    result = test_df["content_type"].map(ct_means).fillna(global_mean)
+    return result.astype(float)

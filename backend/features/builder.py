@@ -2,7 +2,7 @@
 Feature table builder (Week 3).
 
 Produces one row per content post using ONLY information available strictly
-before that post's posted_at, per PRD §6.2 and §7's leakage guard.
+before that post's posted_at, per PRD (leakage guard).
 
 Split into two layers deliberately:
   - `_load_raw_data(db)` / `_load_embeddings(db)` — DB I/O, returns plain DataFrames/dicts.

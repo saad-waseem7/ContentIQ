@@ -27,7 +27,7 @@ def build_embedding_text(title: Optional[str], caption: Optional[str]) -> str:
 def embed_texts(texts: list[str]) -> list[list[float]]:
     model = get_model()
     # normalize_embeddings=True: unit-normalizes each vector so cosine similarity
-    # (needed for the §7 "similarity to top-quartile centroid" feature, next checkpoint)
+    # (needed for the "similarity to top-quartile centroid" feature, next checkpoint)
     # reduces to a plain dot product later, rather than re-normalizing every comparison.
     vectors = model.encode(texts, batch_size=32, show_progress_bar=False, normalize_embeddings=True)
     return vectors.tolist()

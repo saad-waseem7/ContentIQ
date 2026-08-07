@@ -61,7 +61,7 @@ PLANTED_SIGNAL = {
 # since this is synthetic — picked to produce a visibly heavy tail without
 # absurd outliers that would break downstream aggregate stats)
 
-PARETO_ALPHA = 4.0  # was 3.0 — tighten the noise floor further
+PARETO_ALPHA = 3  
 
 BASE_REACH_MIN = 500
 BASE_REACH_MAX = 50000

@@ -54,7 +54,7 @@ def _load_latest_metric_per_content(db: Session) -> pd.DataFrame:
 
 
 # def _compute_performance_raw(df: pd.DataFrame) -> pd.DataFrame:
-#     """performance_raw = (likes+comments+shares+saves) / reach, per §6.2. Rows with
+#     """performance_raw = (likes+comments+shares+saves) / reach, per PRD. Rows with
 #     zero or NULL reach can't produce a ratio (NULLIF-equivalent) and are dropped."""
 #     engagement = df[["likes", "comments", "shares", "saves"]].fillna(0).sum(axis=1)
 #     reach = df["reach"].replace(0, np.nan)
