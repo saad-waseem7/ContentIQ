@@ -96,3 +96,46 @@ class IngestResponse(BaseModel):
     channel_id: Optional[uuid.UUID] = None
     content_id: Optional[uuid.UUID] = None
     metrics_created: int = 0
+
+
+class LeaderboardEntry(BaseModel):
+    rank: int
+    content_id: str
+    platform: str
+    content_type: str
+    hook_type: Optional[str] = None
+    topic_tags: list[str] = Field(default_factory=list)
+    posted_at: datetime
+    performance_raw: float
+    performance_z: float
+    is_top_performer: bool
+
+
+class LeaderboardResponse(BaseModel):
+    user_id: str
+    niche: str
+    total_posts_in_history: int
+    ranked_posts: int
+    leaderboard: list[LeaderboardEntry]
+
+
+class RecommendationResponse(BaseModel):
+    id: str
+    idea_text: str
+    format: str
+    best_time: Optional[str] = None
+    rationale: str
+    predicted_score: float
+    status: str
+    created_at: datetime
+
+
+class FeedbackRequest(BaseModel):
+    status: str
+
+    @field_validator("status")
+    @classmethod
+    def check_status(cls, v):
+        if v not in ("actioned", "dismissed"):
+            raise ValueError("status must be 'actioned' or 'dismissed'")
+        return v

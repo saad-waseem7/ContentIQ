@@ -107,3 +107,23 @@ class Metric(Base):
     followers_gained = Column(Integer, nullable=True)
 
     content = relationship("Content", back_populates="metrics")
+
+
+class Recommendation(Base):
+    __tablename__ = "recommendations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    idea_text = Column(Text, nullable=False)
+    format = Column(Text, nullable=False)
+    best_time = Column(Text, nullable=True)
+    rationale = Column(Text, nullable=False)
+    predicted_score = Column(Float, nullable=False)
+    status = Column(Text, nullable=False, default="proposed")
+    linked_content_id = Column(UUID(as_uuid=True), ForeignKey("content.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(f"format IN {CONTENT_TYPES}", name="ck_recommendations_format"),
+        CheckConstraint("status IN ('proposed', 'actioned', 'dismissed')", name="ck_recommendations_status"),
+    )    

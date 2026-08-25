@@ -3,14 +3,14 @@ import json
 import sys
 from pathlib import Path
 
-# Add project root to sys.path FIRST
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+import joblib
 import matplotlib
-matplotlib.use("Agg")  # headless container, no display backend available
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
 import mlflow
+
 from app.config import settings
 from ml import config as cfg
 from ml.data_prep import (
@@ -21,13 +21,11 @@ from ml.data_prep import (
 )
 from ml.evaluate import classification_metrics, spearman_within_user
 from ml.models import train_classifier, train_regressor
-from ml.shap_analysis import (
-    compute_shap_values,
-    global_feature_importance,
-    planted_signal_shap_check,
-)
+from ml.shap_analysis import compute_shap_values, global_feature_importance, planted_signal_shap_check
 
 FEATURES_PATH = Path(__file__).resolve().parents[1] / "data" / "features.parquet"
+MODEL_ARTIFACT_PATH = Path(__file__).resolve().parents[1] / "data" / "classifier.joblib"
+CATEGORY_LEVELS_PATH = Path(__file__).resolve().parents[1] / "data" / "category_levels.json"
 
 
 def file_sha256(path: Path) -> str:
@@ -49,6 +47,19 @@ def main():
 
     classifier = train_classifier(X_train, y_class_train)
     regressor = train_regressor(X_train, y_reg_train)
+
+    # --- NEW: persist the classifier + its fitted categorical levels to disk. ---
+    # No model registry exists yet (Week 8, deferred) and MLflow's own artifact
+    # store has no "current production run" pointer to resolve deterministically.
+    # This mirrors the same pattern already used for features.parquet: a batch
+    # script writes an artifact, the API reads it, staleness is a documented,
+    # accepted limitation rather than a hidden one.
+    joblib.dump(classifier, MODEL_ARTIFACT_PATH)
+    category_levels = {col: X_full[col].cat.categories.tolist() for col in cfg.CATEGORICAL_FEATURES}
+    CATEGORY_LEVELS_PATH.write_text(json.dumps(category_levels))
+    print(f"Saved classifier to {MODEL_ARTIFACT_PATH}")
+    print(f"Saved category levels to {CATEGORY_LEVELS_PATH}")
+    # --- END NEW ---
 
     class_proba = classifier.predict_proba(X_test)[:, 1]
     reg_pred = regressor.predict(X_test)
@@ -100,7 +111,7 @@ def main():
         mlflow.log_metric("classifier_baseline_roc_auc", baseline_class_metrics["roc_auc"])
         mlflow.log_metric("regressor_spearman_rho", model_spearman)
         mlflow.log_metric("regressor_baseline_spearman_rho", baseline_spearman)
-        
+
         mlflow.lightgbm.log_model(classifier, artifact_path="classifier")
         mlflow.lightgbm.log_model(regressor, artifact_path="regressor")
 
