@@ -26,19 +26,25 @@ export default function LeaderboardPage() {
       .finally(() => setLoading(false));
   }, [userId]);
 
-  if (!userId) return <EmptyMessage text="Enter a user ID above to see their leaderboard." />;
-  if (loading) return <LoadingMessage text="Loading leaderboard..." />;
-  if (error) return <ErrorMessage text={error} />;
-  if (!data) return null;
-  if (data.ranked_posts === 0) return <EmptyMessage text="No ranked posts yet for this user." />;
-
   return (
     <div>
-      <h1 className="text-lg font-semibold mb-1">{data.niche} leaderboard</h1>
-      <p className="text-sm text-gray-500 mb-4">
-        {data.ranked_posts} ranked of {data.total_posts_in_history} total posts
-      </p>
-      <LeaderboardTable entries={data.leaderboard} />
+      <h1 className="text-xl font-semibold text-slate-900 mb-1">Content performance leaderboard</h1>
+      <p className="text-sm text-slate-500 mb-6">Ranked by performance relative to this creator's own baseline.</p>
+
+      {!userId && <EmptyMessage text="Enter a user ID above to see their leaderboard." />}
+      {userId && loading && <LoadingMessage text="Loading leaderboard..." />}
+      {userId && !loading && error && <ErrorMessage text={error} />}
+      {userId && !loading && !error && data && data.ranked_posts === 0 && (
+        <EmptyMessage text="No ranked posts yet for this user." />
+      )}
+      {userId && !loading && !error && data && data.ranked_posts > 0 && (
+        <>
+          <p className="text-sm text-slate-500 mb-3">
+            {data.ranked_posts} ranked of {data.total_posts_in_history} total posts · {data.niche}
+          </p>
+          <LeaderboardTable entries={data.leaderboard} />
+        </>
+      )}
     </div>
   );
 }

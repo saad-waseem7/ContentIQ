@@ -38,22 +38,28 @@ export default function RecommendPage() {
       .finally(() => setFeedbackPending(false));
   }
 
-  if (!userId) return <EmptyMessage text="Enter a user ID above to generate a recommendation." />;
-
   return (
     <div>
-      <h1 className="text-lg font-semibold mb-4">Daily recommendation</h1>
-      <button
-        onClick={handleGenerate}
-        disabled={loading}
-        className="px-4 py-2 bg-blue-600 text-white rounded text-sm disabled:opacity-50 mb-4"
-      >
-        {loading ? "Generating..." : "Generate recommendation"}
-      </button>
-      {loading && <LoadingMessage text="Generating recommendation..." />}
-      {error && <ErrorMessage text={error} />}
-      {!loading && !error && !rec && <EmptyMessage text="Click Generate to get today's recommendation." />}
-      {rec && <RecommendationCard rec={rec} onFeedback={handleFeedback} feedbackPending={feedbackPending} />}
+      <h1 className="text-xl font-semibold text-slate-900 mb-1">Daily recommendation</h1>
+      <p className="text-sm text-slate-500 mb-6">A grounded content idea, scored against this creator's own performance model.</p>
+
+      {!userId && <EmptyMessage text="Enter a user ID above to generate a recommendation." />}
+
+      {userId && (
+        <>
+          <button
+            onClick={handleGenerate}
+            disabled={loading}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium disabled:opacity-50 mb-6 transition-colors"
+          >
+            {loading ? "Generating..." : "Generate recommendation"}
+          </button>
+          {loading && <LoadingMessage text="Generating recommendation..." />}
+          {!loading && error && <ErrorMessage text={error} />}
+          {!loading && !error && !rec && <EmptyMessage text="Click Generate to get today's recommendation." />}
+          {!loading && rec && <RecommendationCard rec={rec} onFeedback={handleFeedback} feedbackPending={feedbackPending} />}
+        </>
+      )}
     </div>
   );
 }
