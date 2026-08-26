@@ -82,7 +82,10 @@ def generate_recommendation(db: Session, user_id: str, llm_client: LLMClient) ->
 
     user_context = _build_user_context(db, user_df, winners_df, idea["content_type"])
 
-    caption_embedding = embed_texts([idea["sample_caption"]])[0]
+    # Kept as a real np.ndarray from this point on — used for BOTH the
+    # existing similarity-to-winners calc and the Week 5 PCA transform,
+    # rather than converting twice.
+    caption_embedding = np.array(embed_texts([idea["sample_caption"]])[0])
     centroid = user_context["winner_centroid"]
     if centroid is not None:
         sim = float(np.dot(caption_embedding, centroid) / (np.linalg.norm(caption_embedding) * np.linalg.norm(centroid)))

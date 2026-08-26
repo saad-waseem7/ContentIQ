@@ -79,10 +79,8 @@ def build_idea_feature_row(idea: dict, user_context: dict) -> pd.DataFrame:
 def apply_known_category_levels(X: pd.DataFrame, category_levels: dict) -> pd.DataFrame:
     """Re-casts categorical columns to the levels fitted at TRAINING time, not
     levels inferred from this single row — LightGBM requires identical
-    category sets between train and predict (this exact mismatch broke
-    training once already, during Week 4 tuning). A value not seen in
-    training becomes NaN, which LightGBM handles as missing rather than
-    crashing — safe, not a silent wrong answer."""
+    category sets between train and predict. A value not seen in training
+    becomes NaN, handled as missing, not a crash."""
     X = X.copy()
     for col, levels in category_levels.items():
         if col in X.columns:

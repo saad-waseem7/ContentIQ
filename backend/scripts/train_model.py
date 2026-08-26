@@ -36,7 +36,7 @@ def main():
     df = load_labeled_feature_table(str(FEATURES_PATH))
     data_hash = file_sha256(FEATURES_PATH)
 
-    X_full = prepare_model_matrix(df)  # categories fixed across full dataset, see design note above
+    X_full = prepare_model_matrix(df)
     train_df, test_df = temporal_train_test_split(df)
     X_train, X_test = X_full.loc[train_df.index], X_full.loc[test_df.index]
 
@@ -48,18 +48,11 @@ def main():
     classifier = train_classifier(X_train, y_class_train)
     regressor = train_regressor(X_train, y_reg_train)
 
-    # --- NEW: persist the classifier + its fitted categorical levels to disk. ---
-    # No model registry exists yet (Week 8, deferred) and MLflow's own artifact
-    # store has no "current production run" pointer to resolve deterministically.
-    # This mirrors the same pattern already used for features.parquet: a batch
-    # script writes an artifact, the API reads it, staleness is a documented,
-    # accepted limitation rather than a hidden one.
     joblib.dump(classifier, MODEL_ARTIFACT_PATH)
     category_levels = {col: X_full[col].cat.categories.tolist() for col in cfg.CATEGORICAL_FEATURES}
     CATEGORY_LEVELS_PATH.write_text(json.dumps(category_levels))
     print(f"Saved classifier to {MODEL_ARTIFACT_PATH}")
     print(f"Saved category levels to {CATEGORY_LEVELS_PATH}")
-    # --- END NEW ---
 
     class_proba = classifier.predict_proba(X_test)[:, 1]
     reg_pred = regressor.predict(X_test)
@@ -78,7 +71,6 @@ def main():
     baseline_reg_eval_df["predicted"] = baseline_reg_pred.values
     baseline_spearman = spearman_within_user(baseline_reg_eval_df, "actual", "predicted")
 
-    # SHAP: interpretability + explicit Week 4 acceptance line
     shap_values = compute_shap_values(classifier, X_test)
     importance_df = global_feature_importance(shap_values, list(X_test.columns))
     signal_check_df = planted_signal_shap_check(shap_values, X_test, test_df, cfg.PLANTED_SIGNAL)

@@ -50,12 +50,12 @@ def test_feature_row_has_all_required_columns():
 
 def test_none_duration_sec_becomes_numeric_nan_not_object_dtype():
     df = build_idea_feature_row(IDEA, USER_CONTEXT)
-    assert df["duration_sec"].dtype.kind in ("f", "i")  # float/int, NOT object
+    assert df["duration_sec"].dtype.kind in ("f", "i")
 
 
 def test_apply_known_category_levels_handles_unseen_value_as_nan():
     df = build_idea_feature_row(IDEA, USER_CONTEXT)
-    fake_levels = {"content_type": ["short_video", "long_video"]}  # deliberately excludes "carousel"
+    fake_levels = {"content_type": ["short_video", "long_video"]}
     result = apply_known_category_levels(df, fake_levels)
     assert result["content_type"].isna().all()
 
