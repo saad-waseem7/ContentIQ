@@ -6,15 +6,12 @@ from app.database import get_db
 from app.leaderboard_service import FeatureDataNotBuiltError, UnknownUserError
 from app.schemas import FeedbackRequest, RecommendationResponse
 from llm.coach import IdeaGenerationError
-from llm.mock_client import MockLLMClient
+from llm.factory import get_llm_client
 from ml.idea_scoring import ModelArtifactsNotFoundError
 
 router = APIRouter()
 
-# No real LLM provider configured yet (PRD §17, open). Mock client keeps the
-# full pipeline runnable/testable end-to-end. Swap for a real LLMClient
-# implementation with no other changes needed anywhere in this router.
-_llm_client = MockLLMClient()
+_llm_client = get_llm_client()
 
 
 def _to_response(rec) -> RecommendationResponse:

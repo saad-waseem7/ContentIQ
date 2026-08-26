@@ -59,6 +59,10 @@ def test_503_when_features_missing(tmp_path, monkeypatch):
 
 
 def test_503_when_model_artifacts_missing(tmp_path, monkeypatch):
+    from llm.mock_client import MockLLMClient
+    import app.routers.recommend as recommend_router
+    monkeypatch.setattr(recommend_router, "_llm_client", MockLLMClient())
+
     user_id = str(uuid.uuid4())
     rows = [_make_row(user_id, str(uuid.uuid4()), performance_z=2.0, label=True)]
     path = _write_features(tmp_path, rows)

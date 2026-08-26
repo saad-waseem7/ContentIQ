@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     postgres_db: str
     mlflow_tracking_uri: str
 
+    llm_provider: str = "mock"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
