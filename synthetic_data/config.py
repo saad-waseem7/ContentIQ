@@ -1,6 +1,7 @@
-NICHES = ["fitness", "food", "tech"]
+NICHES = ["fitness", "food", "tech", "beauty", "personal_finance"]
 
-USERS_PER_NICHE = 15
+USERS_PER_NICHE = 25
+
 MIN_POSTS_PER_USER = 150
 MAX_POSTS_PER_USER = 200
 
@@ -12,6 +13,8 @@ NICHE_PLATFORMS = {
     "fitness": {"instagram": 0.4, "youtube_shorts": 0.3, "tiktok": 0.3},
     "food": {"instagram": 0.5, "youtube": 0.2, "tiktok": 0.3},
     "tech": {"youtube": 0.4, "x": 0.3, "linkedin": 0.3},
+    "beauty": {"instagram": 0.5, "tiktok": 0.4, "youtube_shorts": 0.1},
+    "personal_finance": {"youtube": 0.3, "x": 0.3, "linkedin": 0.4},
 }
 
 # Which content_types a platform realistically posts, weighted
@@ -30,6 +33,8 @@ TOPIC_TAGS_BY_NICHE = {
     "fitness": ["transformation", "workout_routine", "nutrition_tips", "recovery", "mindset"],
     "food": ["quick_recipes", "meal_prep", "restaurant_review", "baking", "healthy_eating"],
     "tech": ["product_review", "coding_tips", "ai_news", "gadget_unboxing", "career_advice"],
+    "beauty": ["skincare_routine", "makeup_tutorial", "product_dupes", "hair_care", "self_care"],
+    "personal_finance": ["budgeting", "investing_basics", "debt_payoff", "side_hustles", "saving_tips"],
 }
 
 # Content-type performance effects: multiplier applied to specific metrics
@@ -53,6 +58,8 @@ PLANTED_SIGNAL = {
     "fitness": {"hook_type": "story", "topic_tag": "transformation", "multiplier": 5.0},
     "food": {"hook_type": "listicle", "topic_tag": "quick_recipes", "multiplier": 5.0},
     "tech": {"hook_type": "bold_claim", "topic_tag": "product_review", "multiplier": 5.0},
+    "beauty": {"hook_type": "question", "topic_tag": "skincare_routine", "multiplier": 5.0},
+    "personal_finance": {"hook_type": "story", "topic_tag": "debt_payoff", "multiplier": 5.0},
 }
 
 # Pareto shape parameter for power-law base performance draw.

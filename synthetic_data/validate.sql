@@ -54,7 +54,9 @@ JOIN metrics m ON m.content_id = c.id
 JOIN (VALUES
   ('fitness', 'story', 'transformation'),
   ('food', 'listicle', 'quick_recipes'),
-  ('tech', 'bold_claim', 'product_review')
+  ('tech', 'bold_claim', 'product_review'),
+  ('beauty', 'question', 'skincare_routine'),
+  ('personal_finance', 'story', 'debt_payoff')
 ) AS sig(niche, hook_type, topic_tag) ON sig.niche = u.niche
 GROUP BY u.niche, is_planted_match
 ORDER BY u.niche, is_planted_match;

@@ -46,4 +46,6 @@ PLANTED_SIGNAL = {
     "fitness": {"hook_type": "story", "topic_tag": "transformation"},
     "food": {"hook_type": "listicle", "topic_tag": "quick_recipes"},
     "tech": {"hook_type": "bold_claim", "topic_tag": "product_review"},
+    "beauty": {"hook_type": "question", "topic_tag": "skincare_routine"},
+    "personal_finance": {"hook_type": "story", "topic_tag": "debt_payoff"},
 }

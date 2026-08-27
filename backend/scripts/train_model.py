@@ -138,8 +138,7 @@ def main():
         (signal_check_df["topic_shap_match"] > signal_check_df["topic_shap_non_match"]).all()
         and (signal_check_df["hook_shap_match"] > signal_check_df["hook_shap_non_match"]).all()
     )
-    print(f"\nPlanted signal recovered in ALL 3 niches (topic + hook SHAP both higher for matches): "
-          f"{'PASS' if signal_recovered else 'FAIL'}")
+    print(f"\nPlanted signal recovered in ALL {len(signal_check_df)} niches (topic + hook SHAP both higher for matches): "f"{'PASS' if signal_recovered else 'FAIL'}")
 
 
 if __name__ == "__main__":
