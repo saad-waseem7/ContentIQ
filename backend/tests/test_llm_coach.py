@@ -8,6 +8,7 @@ import pytest
 from llm.base import LLMClient, LLMGenerationError
 from llm.coach import IdeaGenerationError, generate_idea
 from llm.mock_client import MockLLMClient
+from llm.coach import generate_ideas
 
 GROUNDING_POSTS = [
     {"content_type": "carousel", "hook_type": "story", "topic_tags": ["transformation"], "performance_z": 2.1}
@@ -58,3 +59,33 @@ def test_rejects_rationale_with_no_digit():
     client = MockLLMClient(response_overrides={"rationale": "This will perform really well for you."})
     with pytest.raises(IdeaGenerationError):
         generate_idea(client, niche="fitness", grounding_posts=GROUNDING_POSTS)
+
+
+def test_generate_ideas_returns_n_when_all_succeed():
+    client = MockLLMClient()
+    ideas = generate_ideas(client, niche="fitness", grounding_posts=GROUNDING_POSTS, n=3)
+    assert len(ideas) == 3
+
+
+def test_generate_ideas_tolerates_partial_failure():
+    class MostlyBadClient(LLMClient):
+        def __init__(self):
+            self.calls = 0
+
+        def generate(self, prompt: str) -> str:
+            self.calls += 1
+            if self.calls == 2:
+                return MockLLMClient().generate(prompt)
+            return "not valid json"
+
+    ideas = generate_ideas(MostlyBadClient(), niche="fitness", grounding_posts=GROUNDING_POSTS, n=3)
+    assert len(ideas) == 1
+
+
+def test_generate_ideas_raises_when_all_fail():
+    class AlwaysBadClient(LLMClient):
+        def generate(self, prompt: str) -> str:
+            return "not valid json"
+
+    with pytest.raises(IdeaGenerationError):
+        generate_ideas(AlwaysBadClient(), niche="fitness", grounding_posts=GROUNDING_POSTS, n=3)        

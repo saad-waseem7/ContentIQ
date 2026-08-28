@@ -110,3 +110,20 @@ def generate_idea(llm_client: LLMClient, niche: str, grounding_posts: list[dict]
             last_error = e
             continue
     raise IdeaGenerationError(f"LLM failed to produce a valid idea after {MAX_ATTEMPTS} attempts: {last_error}")
+
+def generate_ideas(llm_client: LLMClient, niche: str, grounding_posts: list[dict], n: int) -> list[dict]:
+    """Generates up to n candidate ideas by calling generate_idea() independently
+    n times — reuses its existing validation/retry logic unchanged. Tolerates
+    partial failure: if some calls fail (malformed output, safety filter block,
+    etc.) but at least one succeeds, returns whatever succeeded. Only raises if
+    ALL n attempts fail."""
+    ideas = []
+    errors = []
+    for _ in range(n):
+        try:
+            ideas.append(generate_idea(llm_client, niche=niche, grounding_posts=grounding_posts))
+        except IdeaGenerationError as e:
+            errors.append(str(e))
+    if not ideas:
+        raise IdeaGenerationError(f"Failed to generate any valid candidates after {n} attempts: {errors}")
+    return ideas

@@ -1,8 +1,11 @@
 """
-Orchestrates: grounding retrieval -> LLM idea generation -> feature-ization
--> classifier scoring -> persistence. Reuses leaderboard_service (grounding),
-llm.coach (generation), ml.idea_scoring (scoring). Only new responsibility
-here: assembling user_context and the DB read/write for `recommendations`.
+Orchestrates: grounding retrieval -> LLM candidate generation (N ideas) ->
+feature-ization -> classifier scoring of EACH candidate -> best-candidate
+selection -> persistence. Reuses leaderboard_service (grounding), llm.coach
+(generation), ml.idea_scoring (scoring, called once per candidate) —
+unchanged. Only the winning candidate is persisted; losing candidates are
+scored, compared, then discarded (see module docstring / Checkpoint notes
+on why this is a flagged-open product decision, not silently made).
 """
 import uuid
 from datetime import datetime, timezone
@@ -16,10 +19,11 @@ from app.leaderboard_service import get_user_feature_rows
 from features.config import RECENT_POSTS_WINDOW
 from features.embeddings import embed_texts
 from llm.base import LLMClient
-from llm.coach import generate_idea
+from llm.coach import generate_ideas
 from ml.idea_scoring import score_idea
 
 GROUNDING_TOP_K = 5
+N_CANDIDATES = 3  # bounded by Gemini free-tier rate limits — see Checkpoint notes
 
 
 class NoWinningContentError(Exception):
@@ -41,16 +45,15 @@ def _get_content_embeddings(db: Session, content_ids: list) -> dict:
     return {cid: np.array(vec, dtype=float) for cid, vec in rows}
 
 
-def _build_user_context(db, user_df, winners_df, idea_content_type: str) -> dict:
+def _build_base_user_context(db, user_df, winners_df) -> dict:
+    """Fields that do NOT depend on which specific idea is being scored —
+    computed once per request, not once per candidate."""
     content_ids = [uuid.UUID(cid) for cid in winners_df["content_id"]]
     embeddings_map = _get_content_embeddings(db, content_ids)
     centroid = np.mean(list(embeddings_map.values()), axis=0) if embeddings_map else None
 
     by_time = user_df.sort_values("posted_at")
     most_recent = by_time.iloc[-1]
-    recent_window = by_time.tail(RECENT_POSTS_WINDOW)
-    content_type_share_recent = float((recent_window["content_type"] == idea_content_type).mean())
-
     planned_posted_at = datetime.now(timezone.utc)
     days_since_last_post = (planned_posted_at - most_recent["posted_at"]).total_seconds() / 86400
 
@@ -58,11 +61,36 @@ def _build_user_context(db, user_df, winners_df, idea_content_type: str) -> dict
         "niche": user_df["niche"].iloc[0],
         "follower_count": most_recent["follower_count"],
         "days_since_last_post": days_since_last_post,
-        "content_type_share_recent": content_type_share_recent,
         "is_first_post_for_user": False,
-        "winner_centroid": centroid,
         "planned_posted_at": planned_posted_at,
+        "_winner_centroid": centroid,
+        "_recent_window_df": by_time.tail(RECENT_POSTS_WINDOW),
     }
+
+
+def _complete_context_for_idea(base_context: dict, idea: dict, caption_embedding: np.ndarray) -> dict:
+    """Fields that DO depend on the specific candidate idea — content_type_share_recent
+    and similarity_to_prior_winners both vary per candidate (different content_type,
+    different caption embedding). Formulas identical to the prior single-idea
+    implementation — only WHEN they're computed changed, not the math."""
+    recent_window = base_context["_recent_window_df"]
+    content_type_share_recent = float((recent_window["content_type"] == idea["content_type"]).mean())
+
+    centroid = base_context["_winner_centroid"]
+    if centroid is not None:
+        sim = float(np.dot(caption_embedding, centroid) / (np.linalg.norm(caption_embedding) * np.linalg.norm(centroid)))
+    else:
+        sim = None
+
+    ctx = {k: v for k, v in base_context.items() if not k.startswith("_")}
+    ctx["content_type_share_recent"] = content_type_share_recent
+    ctx["similarity_to_prior_winners"] = sim
+    return ctx
+
+
+def _select_best_candidate(scored_candidates: list[tuple[dict, float]]) -> tuple[dict, float]:
+    """Pure, directly unit-testable — no DB/LLM/model dependency."""
+    return max(scored_candidates, key=lambda pair: pair[1])
 
 
 def _format_idea_text(idea: dict) -> str:
@@ -70,7 +98,7 @@ def _format_idea_text(idea: dict) -> str:
 
 
 def generate_recommendation(db: Session, user_id: str, llm_client: LLMClient) -> models.Recommendation:
-    user_df = get_user_feature_rows(user_id)  # raises UnknownUserError / FeatureDataNotBuiltError
+    user_df = get_user_feature_rows(user_id)
 
     winners_df = user_df[user_df["has_sufficient_group_history"] & (user_df["label_overperformer"] == True)]  # noqa: E712
     if winners_df.empty:
@@ -78,31 +106,29 @@ def generate_recommendation(db: Session, user_id: str, llm_client: LLMClient) ->
 
     top_k = winners_df.sort_values("performance_z", ascending=False).head(GROUNDING_TOP_K)
     niche = user_df["niche"].iloc[0]
-    idea = generate_idea(llm_client, niche=niche, grounding_posts=top_k.to_dict("records"))
 
-    user_context = _build_user_context(db, user_df, winners_df, idea["content_type"])
+    ideas = generate_ideas(llm_client, niche=niche, grounding_posts=top_k.to_dict("records"), n=N_CANDIDATES)
 
-    # Kept as a real np.ndarray from this point on — used for BOTH the
-    # existing similarity-to-winners calc and the Week 5 PCA transform,
-    # rather than converting twice.
-    caption_embedding = np.array(embed_texts([idea["sample_caption"]])[0])
-    centroid = user_context["winner_centroid"]
-    if centroid is not None:
-        sim = float(np.dot(caption_embedding, centroid) / (np.linalg.norm(caption_embedding) * np.linalg.norm(centroid)))
-    else:
-        sim = None
-    user_context["similarity_to_prior_winners"] = sim
+    base_context = _build_base_user_context(db, user_df, winners_df)
+    caption_embeddings = embed_texts([idea["sample_caption"] for idea in ideas])
 
-    predicted_score = score_idea(idea, user_context)
+    scored_candidates = []
+    for idea, embedding in zip(ideas, caption_embeddings):
+        caption_embedding = np.array(embedding)
+        ctx = _complete_context_for_idea(base_context, idea, caption_embedding)
+        score = score_idea(idea, ctx)
+        scored_candidates.append((idea, score))
+
+    best_idea, best_score = _select_best_candidate(scored_candidates)
 
     rec = models.Recommendation(
         id=uuid.uuid4(),
         user_id=uuid.UUID(user_id),
-        idea_text=_format_idea_text(idea),
-        format=idea["content_type"],
-        best_time=idea["best_posting_window"],
-        rationale=idea["rationale"],
-        predicted_score=predicted_score,
+        idea_text=_format_idea_text(best_idea),
+        format=best_idea["content_type"],
+        best_time=best_idea["best_posting_window"],
+        rationale=best_idea["rationale"],
+        predicted_score=best_score,
         status="proposed",
     )
     db.add(rec)

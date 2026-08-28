@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timezone
 
 import pandas as pd
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -15,6 +16,77 @@ from app.main import app
 from ml import idea_scoring
 
 
+class _StubClassifierAscendingScores:
+    """Returns increasing scores on successive calls — proves the endpoint
+    actually picks the LAST-scored (highest) candidate, not just the first
+    one generated, which would silently pass a weaker test."""
+    call_count = 0
+
+    def predict_proba(self, X):
+        _StubClassifierAscendingScores.call_count += 1
+        score = 0.2 * _StubClassifierAscendingScores.call_count
+        return np.array([[1 - score, score]])
+
+
+class _ThreeDistinctIdeasClient:
+    def __init__(self):
+        self.captions = [
+            "First candidate idea about transformation.",
+            "Second candidate idea, a different angle entirely.",
+            "Third candidate idea, yet another take.",
+        ]
+        self.call_index = 0
+
+    def generate(self, prompt: str) -> str:
+        import json
+        caption = self.captions[self.call_index % len(self.captions)]
+        self.call_index += 1
+        return json.dumps({
+            "hook_type": "story", "content_type": "carousel", "platform": "instagram",
+            "primary_topic_tag": "transformation", "duration_sec": None,
+            "best_posting_window": "Tuesday 7-9pm", "sample_caption": caption,
+            "rationale": "Beat your median by 2x based on real data.",
+        })
+
+
+def test_recommend_selects_highest_scored_candidate_not_first(tmp_path, monkeypatch):
+    import json as json_module
+    import joblib
+    from app.database import SessionLocal
+    from app import models as db_models
+
+    user_id = str(uuid.uuid4())
+    db = SessionLocal()
+    db.add(db_models.User(id=uuid.UUID(user_id), niche="fitness", goal="test"))
+    db.commit()
+    db.close()
+
+    rows = [_make_row(user_id, str(uuid.uuid4()), performance_z=2.0, label=True) for _ in range(5)]
+    path = _write_features(tmp_path, rows)
+    monkeypatch.setattr(leaderboard_service, "FEATURES_PATH", path)
+
+    _StubClassifierAscendingScores.call_count = 0
+    joblib.dump(_StubClassifierAscendingScores(), tmp_path / "classifier.joblib")
+    (tmp_path / "category_levels.json").write_text(json_module.dumps({
+        "content_type": ["carousel"], "hook_type": ["story"], "platform": ["instagram"],
+        "niche": ["fitness"], "duration_bucket": ["not_applicable"], "follower_tier": ["5k_to_50k"],
+        "primary_topic_tag": ["transformation"],
+    }))
+    monkeypatch.setattr(idea_scoring, "MODEL_PATH", tmp_path / "classifier.joblib")
+    monkeypatch.setattr(idea_scoring, "CATEGORY_LEVELS_PATH", tmp_path / "category_levels.json")
+
+    import app.routers.recommend as recommend_router
+    monkeypatch.setattr(recommend_router, "_llm_client", _ThreeDistinctIdeasClient())
+
+    client = TestClient(app)
+    resp = client.post(f"/recommend?user_id={user_id}")
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert "Third candidate idea" in body["idea_text"]
+    assert body["predicted_score"] == pytest.approx(0.6)
+
+    
 def _make_row(user_id, content_id, performance_z, label, has_history=True, niche="fitness"):
     return {
         "user_id": user_id,
