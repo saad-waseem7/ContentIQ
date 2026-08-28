@@ -41,6 +41,83 @@ export class ApiError extends Error {
   }
 }
 
+export interface DimensionEntry {
+  value: string;
+  n: number;
+  mean_performance_z: number;
+  is_standout: boolean;
+}
+
+export interface TrendInsight {
+  sufficient_data: boolean;
+  recent_period_days?: number;
+  recent_mean_performance_z?: number;
+  recent_n?: number;
+  historical_mean_performance_z?: number;
+  historical_n?: number;
+  direction: string;
+  note: string;
+}
+
+export interface MonthlyPerformanceEntry {
+  period: string;
+  mean_performance_z: number;
+  n: number;
+}
+
+export interface NicheComparison {
+  sufficient_data: boolean;
+  user_mean_performance_z?: number;
+  user_n: number;
+  niche_mean_performance_z?: number;
+  niche_other_users_n: number;
+  niche_total_posts_n: number;
+  delta?: number;
+}
+
+export interface NichePatternEntry {
+  dimension: string;
+  value: string;
+  n: number;
+  mean_performance_z: number;
+  is_standout: boolean;
+}
+
+export interface ClusterEntry {
+  cluster_id: number;
+  n: number;
+  mean_performance_z: number;
+  dominant_content_type: string;
+  dominant_hook_type: string;
+  dominant_topic_tag: string;
+  is_high_performing: boolean;
+}
+
+export interface TopicClusters {
+  available: boolean;
+  reason_unavailable?: string;
+  k?: number;
+  silhouette_score?: number;
+  clusters?: ClusterEntry[];
+  user_cluster_summary: { cluster_id: number; user_post_count: number }[];
+}
+
+export interface InsightsResponse {
+  user_id: string;
+  niche: string;
+  personal_patterns: { total_posts_analyzed: number; dimensions: Record<string, DimensionEntry[]> };
+  trend: TrendInsight;
+  monthly_performance: MonthlyPerformanceEntry[];
+  niche_comparison: NicheComparison;
+  niche_top_patterns: NichePatternEntry[];
+  topic_clusters: TopicClusters;
+}
+
+export async function getInsights(userId: string): Promise<InsightsResponse> {
+  const res = await fetch(`${BASE_URL}/insights?user_id=${encodeURIComponent(userId)}`);
+  return handle<InsightsResponse>(res);
+}
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 async function handle<T>(res: Response): Promise<T> {

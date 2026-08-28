@@ -139,3 +139,85 @@ class FeedbackRequest(BaseModel):
         if v not in ("actioned", "dismissed"):
             raise ValueError("status must be 'actioned' or 'dismissed'")
         return v
+
+
+class DimensionEntry(BaseModel):
+    value: str
+    n: int
+    mean_performance_z: float
+    is_standout: bool
+
+
+class PersonalPatterns(BaseModel):
+    total_posts_analyzed: int
+    dimensions: dict[str, list[DimensionEntry]]
+
+
+class TrendInsight(BaseModel):
+    sufficient_data: bool
+    recent_period_days: Optional[int] = None
+    recent_mean_performance_z: Optional[float] = None
+    recent_n: Optional[int] = None
+    historical_mean_performance_z: Optional[float] = None
+    historical_n: Optional[int] = None
+    direction: str
+    note: str
+
+
+class MonthlyPerformanceEntry(BaseModel):
+    period: str
+    mean_performance_z: float
+    n: int
+
+
+class NicheComparison(BaseModel):
+    sufficient_data: bool
+    user_mean_performance_z: Optional[float] = None
+    user_n: int
+    niche_mean_performance_z: Optional[float] = None
+    niche_other_users_n: int
+    niche_total_posts_n: int
+    delta: Optional[float] = None
+
+
+class NichePatternEntry(BaseModel):
+    dimension: str
+    value: str
+    n: int
+    mean_performance_z: float
+    is_standout: bool
+
+
+class ClusterEntry(BaseModel):
+    cluster_id: int
+    n: int
+    mean_performance_z: float
+    dominant_content_type: str
+    dominant_hook_type: str
+    dominant_topic_tag: str
+    is_high_performing: bool
+
+
+class UserClusterSummaryEntry(BaseModel):
+    cluster_id: int
+    user_post_count: int
+
+
+class TopicClusters(BaseModel):
+    available: bool
+    reason_unavailable: Optional[str] = None
+    k: Optional[int] = None
+    silhouette_score: Optional[float] = None
+    clusters: Optional[list[ClusterEntry]] = None
+    user_cluster_summary: list[UserClusterSummaryEntry] = Field(default_factory=list)
+
+
+class InsightsResponse(BaseModel):
+    user_id: str
+    niche: str
+    personal_patterns: PersonalPatterns
+    trend: TrendInsight
+    monthly_performance: list[MonthlyPerformanceEntry]
+    niche_comparison: NicheComparison
+    niche_top_patterns: list[NichePatternEntry]
+    topic_clusters: TopicClusters

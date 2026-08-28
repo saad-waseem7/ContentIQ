@@ -39,6 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <nav className="flex gap-1">
                   <NavLink href="/leaderboard">Leaderboard</NavLink>
                   <NavLink href="/recommend">Daily recommendation</NavLink>
+                  <NavLink href="/insights">Insights</NavLink>
                 </nav>
               </div>
               <UserIdInput />

@@ -33,15 +33,16 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     return vectors.tolist()
 
 
-def fetch_content_needing_embeddings(db: Session, limit: int = 10000):
-    return db.execute(
-        select(models.Content.id, models.Content.title, models.Content.caption)
-        .where(models.Content.caption_embedding.is_(None))
-        .limit(limit)
-    ).all()
+def fetch_content_needing_embeddings(db: Session, limit: Optional[int] = None):
+    query = select(models.Content.id, models.Content.title, models.Content.caption).where(
+        models.Content.caption_embedding.is_(None)
+    )
+    if limit is not None:
+        query = query.limit(limit)
+    return db.execute(query).all()
 
 
-def embed_missing_content(db: Session, limit: int = 10000) -> dict:
+def embed_missing_content(db: Session, limit: Optional[int] = None) -> dict:
     rows = fetch_content_needing_embeddings(db, limit=limit)
     if not rows:
         return {"embedded": 0, "skipped_empty_text": 0}
