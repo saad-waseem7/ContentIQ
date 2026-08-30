@@ -1,5 +1,4 @@
 "use client";
-
 import { useTheme } from "@/lib/ThemeContext";
 import { SunIcon, MoonIcon } from "@/components/icons";
 
@@ -9,11 +8,12 @@ export default function ThemeToggle() {
     <button
       onClick={toggleTheme}
       aria-pressed={theme === "dark"}
-      aria-label="Toggle dark mode"
-      title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-      className="flex items-center justify-center h-8 w-8 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors"
+      className="flex items-center gap-1.5 h-9 pl-1.5 pr-3 rounded-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-medium hover:bg-slate-50 dark:hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors"
     >
-      {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+      <span className="flex items-center justify-center h-6 w-6 rounded-full bg-slate-100 dark:bg-slate-700">
+        {theme === "dark" ? <MoonIcon /> : <SunIcon />}
+      </span>
+      {theme === "dark" ? "DARK MODE" : "LIGHT MODE"}
     </button>
   );
 }

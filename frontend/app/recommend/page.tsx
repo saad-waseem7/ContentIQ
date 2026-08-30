@@ -5,6 +5,7 @@ import { generateRecommendation, submitFeedback, RecommendationResponse, ApiErro
 import { useUserId } from "@/lib/UserContext";
 import { LoadingMessage, EmptyMessage, ErrorMessage, messageForStatus } from "@/components/StatusMessage";
 import RecommendationCard from "@/components/RecommendationCard";
+import PageHeader from "@/components/PageHeader";
 
 export default function RecommendPage() {
   const { userId } = useUserId();
@@ -40,8 +41,7 @@ export default function RecommendPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-1">Daily recommendation</h1>
-      <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">A grounded content idea, scored against this creator's own performance model.</p>
+      <PageHeader title="Daily Recommendation" subtitle="A grounded content idea, scored against this creator's own performance model." />
 
       {!userId && <EmptyMessage text="Enter a user ID above to generate a recommendation." />}
 
@@ -50,9 +50,9 @@ export default function RecommendPage() {
           <button
             onClick={handleGenerate}
             disabled={loading}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white rounded-md text-sm font-medium disabled:opacity-50 mb-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors"
+            className="h-9 px-4 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white rounded-md text-sm font-medium disabled:opacity-50 mb-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors"
           >
-            {loading ? "Generating..." : "Generate recommendation"}
+            {loading ? "Generating..." : "Generate Recommendation"}
           </button>
           {loading && <LoadingMessage text="Generating recommendation..." />}
           {!loading && error && <ErrorMessage text={error} />}

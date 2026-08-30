@@ -7,7 +7,6 @@ import "./globals.css";
 import { UserProvider } from "@/lib/UserContext";
 import { ThemeProvider } from "@/lib/ThemeContext";
 import { themeInitScript } from "@/lib/theme";
-import UserIdInput from "@/components/UserIdInput";
 import ThemeToggle from "@/components/ThemeToggle";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -40,19 +39,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <UserProvider>
             <div className="max-w-5xl mx-auto px-4 sm:px-6">
-              <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 py-5 border-b border-slate-200 dark:border-slate-700">
+              <header className="flex items-center justify-between gap-3 py-5 border-b border-slate-200 dark:border-slate-700">
                 <div className="flex items-center gap-6">
                   <span className="text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100">ContentIQ</span>
                   <nav className="flex gap-1">
                     <NavLink href="/leaderboard">Leaderboard</NavLink>
-                    <NavLink href="/recommend">Daily recommendation</NavLink>
+                    <NavLink href="/recommend">Daily Recommendation</NavLink>
                     <NavLink href="/insights">Insights</NavLink>
                   </nav>
                 </div>
-                <div className="flex items-center gap-3">
-                  <UserIdInput />
-                  <ThemeToggle />
-                </div>
+                <ThemeToggle />
               </header>
               <main className="py-8">{children}</main>
             </div>
