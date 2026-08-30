@@ -145,3 +145,20 @@ def update_recommendation_status(db: Session, recommendation_id: str, status: st
     db.commit()
     db.refresh(rec)
     return rec
+
+
+def score_custom_idea(db: Session, user_id: str, idea: dict) -> float:
+    """Scores a user-supplied idea directly, skipping LLM generation. Reuses
+    the exact same context-building and scoring path generate_recommendation
+    uses for each candidate — only the source of `idea` differs. Not
+    persisted to `recommendations`: this is a one-off, on-demand check,
+    per Feature doc — 'separate from the daily feed.'"""
+    user_df = get_user_feature_rows(user_id)
+    winners_df = user_df[user_df["has_sufficient_group_history"] & (user_df["label_overperformer"] == True)]  # noqa: E712
+    if winners_df.empty:
+        raise NoWinningContentError(f"User {user_id} has no top-performing content yet to score against.")
+
+    base_context = _build_base_user_context(db, user_df, winners_df)
+    caption_embedding = np.array(embed_texts([idea["sample_caption"]])[0])
+    ctx = _complete_context_for_idea(base_context, idea, caption_embedding)
+    return score_idea(idea, ctx)

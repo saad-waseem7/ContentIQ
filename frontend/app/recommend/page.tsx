@@ -6,6 +6,7 @@ import { useUserId } from "@/lib/UserContext";
 import { LoadingMessage, EmptyMessage, ErrorMessage, messageForStatus } from "@/components/StatusMessage";
 import RecommendationCard from "@/components/RecommendationCard";
 import PageHeader from "@/components/PageHeader";
+import TryYourIdeaPanel from "@/components/TryYourIdeaPanel";
 
 export default function RecommendPage() {
   const { userId } = useUserId();
@@ -58,6 +59,7 @@ export default function RecommendPage() {
           {!loading && error && <ErrorMessage text={error} />}
           {!loading && !error && !rec && <EmptyMessage text="Click Generate to get today's recommendation." />}
           {!loading && rec && <RecommendationCard rec={rec} onFeedback={handleFeedback} feedbackPending={feedbackPending} />}
+          <TryYourIdeaPanel />
         </>
       )}
     </div>

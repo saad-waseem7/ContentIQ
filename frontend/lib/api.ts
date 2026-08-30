@@ -157,3 +157,16 @@ export async function submitFeedback(
   });
   return handle<RecommendationResponse>(res);
 }
+
+export interface PredictRequest {
+  hook_type: string; content_type: string; platform: string;
+  primary_topic_tag: string; duration_sec?: number | null; sample_caption: string;
+}
+export interface PredictResponse { predicted_score: number; }
+
+export async function predictIdea(userId: string, payload: PredictRequest): Promise<PredictResponse> {
+  const res = await fetch(`${BASE_URL}/predict?user_id=${encodeURIComponent(userId)}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  });
+  return handle<PredictResponse>(res);
+}

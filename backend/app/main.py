@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import content, health, ingest, insights, recommend
+from app.routers import content, health, ingest, insights, predict, recommend
 
 app = FastAPI(title="ContentIQ API")
 
@@ -17,3 +17,4 @@ app.include_router(ingest.router)
 app.include_router(content.router)
 app.include_router(recommend.router)
 app.include_router(insights.router)
+app.include_router(predict.router)
