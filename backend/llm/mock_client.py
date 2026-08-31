@@ -3,6 +3,7 @@ Deterministic mock client. Used for tests and to run the full pipeline
 end-to-end with no real provider configured yet. Swappable for a real
 LLMClient implementation with zero changes anywhere else — see base.py.
 """
+
 import json
 
 from llm.base import LLMClient

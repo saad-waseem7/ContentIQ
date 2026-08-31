@@ -35,7 +35,7 @@ export function signed(z: number): string {
 /**
  * Conclusion -> metric -> sample size, per the human-readable requirement.
  * Never renders raw "n=" notation. z is a standard-deviation-from-baseline
- * value (see PRD §6.2) — never rescaled to a 0-10 score or percentage here.
+ * value (see PRD) — never rescaled to a 0-10 score or percentage here.
  */
 export function describePerformance(z: number, n: number): {
   direction: "above" | "below" | "even";

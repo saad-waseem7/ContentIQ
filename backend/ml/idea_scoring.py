@@ -4,6 +4,7 @@ vector the Week 4 classifier expects, then scores it. Reuses
 features/content_features.py, features/embeddings.py, and
 ml/data_prep.py::prepare_model_matrix directly — no feature logic duplicated.
 """
+
 import json
 from pathlib import Path
 from typing import Optional
@@ -17,7 +18,9 @@ from ml import config as ml_cfg
 from ml.data_prep import prepare_model_matrix
 
 MODEL_PATH = Path(__file__).resolve().parents[1] / "data" / "classifier.joblib"
-CATEGORY_LEVELS_PATH = Path(__file__).resolve().parents[1] / "data" / "category_levels.json"
+CATEGORY_LEVELS_PATH = (
+    Path(__file__).resolve().parents[1] / "data" / "category_levels.json"
+)
 
 
 class ModelArtifactsNotFoundError(Exception):
@@ -26,20 +29,29 @@ class ModelArtifactsNotFoundError(Exception):
 
 def load_classifier():
     if not MODEL_PATH.exists():
-        raise ModelArtifactsNotFoundError(f"Classifier not found at {MODEL_PATH}. Run scripts/train_model.py first.")
+        raise ModelArtifactsNotFoundError(
+            f"Classifier not found at {MODEL_PATH}. Run scripts/train_model.py first."
+        )
     return joblib.load(MODEL_PATH)
 
 
 def load_category_levels() -> dict:
     if not CATEGORY_LEVELS_PATH.exists():
-        raise ModelArtifactsNotFoundError(f"Category levels not found at {CATEGORY_LEVELS_PATH}. Run scripts/train_model.py first.")
+        raise ModelArtifactsNotFoundError(
+            f"Category levels not found at {CATEGORY_LEVELS_PATH}. Run scripts/train_model.py first."
+        )
     return json.loads(CATEGORY_LEVELS_PATH.read_text())
 
 
 def _follower_tier(follower_count: Optional[float]) -> str:
     if follower_count is None or pd.isna(follower_count):
         return "unknown"
-    return pd.cut([follower_count], bins=feat_cfg.FOLLOWER_BUCKETS, labels=feat_cfg.FOLLOWER_BUCKET_LABELS, right=False)[0]
+    return pd.cut(
+        [follower_count],
+        bins=feat_cfg.FOLLOWER_BUCKETS,
+        labels=feat_cfg.FOLLOWER_BUCKET_LABELS,
+        right=False,
+    )[0]
 
 
 def build_idea_feature_row(idea: dict, user_context: dict) -> pd.DataFrame:

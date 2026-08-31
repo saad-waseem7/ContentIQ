@@ -168,7 +168,7 @@ The mock provider is deterministic and is the recommended default for local deve
 ```dotenv
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=your_google_ai_studio_key
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3.6-flash
 ```
 
 Gemini credentials are read by the backend only when the Gemini provider is selected. Obtain a key from [Google AI Studio](https://aistudio.google.com/apikey), and do not commit it to the repository.

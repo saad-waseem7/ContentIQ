@@ -38,8 +38,18 @@ def _load_latest_metric_per_content(db: Session) -> pd.DataFrame:
 
     df = pd.DataFrame(
         rows,
-        columns=["content_id", "content_type", "user_id", "platform", "captured_at",
-                 "likes", "comments", "shares", "saves", "reach"],
+        columns=[
+            "content_id",
+            "content_type",
+            "user_id",
+            "platform",
+            "captured_at",
+            "likes",
+            "comments",
+            "shares",
+            "saves",
+            "reach",
+        ],
     )
     if df.empty:
         return df
@@ -74,7 +84,12 @@ def compute_and_store_baselines(db: Session) -> int:
 
     stats = (
         df.groupby(["user_id", "platform", "content_type"])["performance_raw"]
-        .agg(rolling_median_perf="median", p25=lambda s: s.quantile(0.25), p75=lambda s: s.quantile(0.75), n="count")
+        .agg(
+            rolling_median_perf="median",
+            p25=lambda s: s.quantile(0.25),
+            p75=lambda s: s.quantile(0.75),
+            n="count",
+        )
         .reset_index()
     )
     stats = stats[stats["n"] >= MIN_POSTS_FOR_BASELINE]

@@ -1,8 +1,9 @@
 """
 Provider-agnostic LLM interface. No vendor SDK is imported here or anywhere
 else in the recommendation pipeline — concrete implementations plug in later
-once a provider is chosen (PRD §17, still open).
+once a provider is chosen.
 """
+
 from abc import ABC, abstractmethod
 
 

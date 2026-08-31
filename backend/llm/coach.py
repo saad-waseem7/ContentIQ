@@ -1,9 +1,10 @@
 """
-Prompt construction + idea generation for §10's LLM coaching layer.
+Prompt construction + idea generation for LLM coaching layer.
 Depends only on llm.base.LLMClient's generate() contract — no vendor coupling.
 Validates output against the SAME closed lists already enforced elsewhere
 (app.models.PLATFORMS/CONTENT_TYPES/HOOK_TYPES), not a re-declared copy.
 """
+
 import json
 
 from pydantic import BaseModel, ValidationError, field_validator
@@ -12,6 +13,29 @@ from app.models import CONTENT_TYPES, HOOK_TYPES, PLATFORMS
 from llm.base import LLMClient, LLMGenerationError
 
 MAX_ATTEMPTS = 2
+
+# Each candidate in a multi-candidate request gets one of these strategic
+# directives, discovered necessary by the Recommendation Quality Evaluation:
+# identical prompts across candidates produced near-paraphrases (100% same
+# hook_type, 100% same topic, 88% same content_type, avg score spread 0.076).
+# These are GUIDANCE, not hard category mandates — each explicitly still
+# requires grounding in the same real posts, so if a user's data strongly
+# supports one topic/format, all three can still land there; the directive
+# only gives Gemini permission and a reason to vary presentation where the
+# evidence actually allows it.
+STRATEGY_DIRECTIVES = [
+    "Strategic direction: propose the SAFEST, most evidence-backed idea — "
+    "closely mirror the hook type, content type, and topic that appear most "
+    "consistently among the top-performing posts above.",
+    "Strategic direction: propose an ALTERNATIVE FRAMING. Keep the idea "
+    "grounded in the same posts above, but present it differently than the "
+    "single most obvious choice — e.g. a different hook type or content "
+    "type than your first instinct, while staying on a topic these posts support.",
+    "Strategic direction: propose a more EXPERIMENTAL idea that still draws "
+    "directly on the creator's demonstrated strengths above, but combines "
+    "them in a less obvious way — e.g. a different angle, structure, or an "
+    "adjacent topic — while remaining clearly grounded in the evidence given.",
+]
 
 
 class IdeaGenerationError(Exception):
@@ -60,27 +84,28 @@ class IdeaOutput(BaseModel):
     @field_validator("rationale")
     @classmethod
     def check_rationale_cites_a_number(cls, v):
-        # Lightweight enforcement of §10's "must cite a real number" guardrail.
-        # Confirms a digit is present — does not fact-check the number against
-        # the grounding data (that would need parsing free text against
-        # source stats, out of scope for this MVP).
         if not v or not v.strip() or not any(ch.isdigit() for ch in v):
-            raise ValueError("rationale must cite a real number from the grounding data")
+            raise ValueError(
+                "rationale must cite a real number from the grounding data"
+            )
         return v
 
 
-def _build_prompt(niche: str, grounding_posts: list[dict], retry_note: str = "") -> str:
+def _build_prompt(
+    niche: str, grounding_posts: list[dict], retry_note: str = "", directive: str = ""
+) -> str:
     posts_summary = "\n".join(
         f"- {p['content_type']} with {p['hook_type']} hook on {p['topic_tags']}, "
         f"performance_z={p['performance_z']:.2f} standard deviations above this creator's own baseline"
         for p in grounding_posts
     )
+    directive_block = f"\n\n{directive}" if directive else ""
     return f"""You are a content strategy coach for a creator in the "{niche}" niche.
 
 This creator's real top-performing posts, ranked by how far above their OWN personal baseline they scored:
 {posts_summary}
 
-Generate exactly ONE new content idea grounded in these patterns. Respond with ONLY a JSON object with these exact keys:
+Generate exactly ONE new content idea grounded in these patterns.{directive_block} Respond with ONLY a JSON object with these exact keys:
 hook_type (one of: question, bold_claim, listicle, story, none)
 content_type (one of: short_video, long_video, image, carousel, text)
 platform (one of: youtube, youtube_shorts, instagram, tiktok, x, linkedin)
@@ -93,11 +118,17 @@ rationale (ONE sentence, must cite a real number from the posts listed above —
 Stay strictly within this creator's niche and voice.{retry_note}"""
 
 
-def generate_idea(llm_client: LLMClient, niche: str, grounding_posts: list[dict]) -> dict:
+def generate_idea(
+    llm_client: LLMClient, niche: str, grounding_posts: list[dict], directive: str = ""
+) -> dict:
     last_error = None
     for attempt in range(MAX_ATTEMPTS):
-        retry_note = "\n\nYour previous response was invalid. Strictly follow the schema above." if attempt else ""
-        prompt = _build_prompt(niche, grounding_posts, retry_note)
+        retry_note = (
+            "\n\nYour previous response was invalid. Strictly follow the schema above."
+            if attempt
+            else ""
+        )
+        prompt = _build_prompt(niche, grounding_posts, retry_note, directive)
         try:
             raw = llm_client.generate(prompt)
         except LLMGenerationError as e:
@@ -109,21 +140,39 @@ def generate_idea(llm_client: LLMClient, niche: str, grounding_posts: list[dict]
         except (json.JSONDecodeError, ValidationError) as e:
             last_error = e
             continue
-    raise IdeaGenerationError(f"LLM failed to produce a valid idea after {MAX_ATTEMPTS} attempts: {last_error}")
+    raise IdeaGenerationError(
+        f"LLM failed to produce a valid idea after {MAX_ATTEMPTS} attempts: {last_error}"
+    )
 
-def generate_ideas(llm_client: LLMClient, niche: str, grounding_posts: list[dict], n: int) -> list[dict]:
-    """Generates up to n candidate ideas by calling generate_idea() independently
-    n times — reuses its existing validation/retry logic unchanged. Tolerates
-    partial failure: if some calls fail (malformed output, safety filter block,
-    etc.) but at least one succeeds, returns whatever succeeded. Only raises if
-    ALL n attempts fail."""
+
+def generate_ideas(
+    llm_client: LLMClient, niche: str, grounding_posts: list[dict], n: int
+) -> list[dict]:
+    """Generates up to n candidate ideas, each assigned a distinct strategic
+    directive from STRATEGY_DIRECTIVES (cycled if n exceeds the list length)
+    so candidates represent genuinely different strategic angles rather than
+    n independent draws of an identical prompt. Reuses generate_idea's
+    existing validation/retry logic unchanged. Tolerates partial failure:
+    if some calls fail (malformed output, safety filter block, rate limit,
+    etc.) but at least one succeeds, returns whatever succeeded. Only raises
+    if ALL n attempts fail."""
     ideas = []
     errors = []
-    for _ in range(n):
+    for i in range(n):
+        directive = STRATEGY_DIRECTIVES[i % len(STRATEGY_DIRECTIVES)]
         try:
-            ideas.append(generate_idea(llm_client, niche=niche, grounding_posts=grounding_posts))
+            ideas.append(
+                generate_idea(
+                    llm_client,
+                    niche=niche,
+                    grounding_posts=grounding_posts,
+                    directive=directive,
+                )
+            )
         except IdeaGenerationError as e:
             errors.append(str(e))
     if not ideas:
-        raise IdeaGenerationError(f"Failed to generate any valid candidates after {n} attempts: {errors}")
+        raise IdeaGenerationError(
+            f"Failed to generate any valid candidates after {n} attempts: {errors}"
+        )
     return ideas

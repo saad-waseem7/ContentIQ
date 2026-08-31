@@ -15,9 +15,17 @@ FOLLOWER_BUCKET_LABELS = ["under_5k", "5k_to_50k", "over_50k"]
 # recency window given users average ~180 posts.
 RECENT_POSTS_WINDOW = 10
 
-MIN_GROUP_SIZE_FOR_ZSCORE = 3  # same floor as user_baselines, avoids a meaningless z-score off 1-2 points
+MIN_GROUP_SIZE_FOR_ZSCORE = (
+    3  # same floor as user_baselines, avoids a meaningless z-score off 1-2 points
+)
 
 CTA_PATTERNS = [
-    r"\blink in bio\b", r"\bcomment below\b", r"\bdm me\b", r"\bswipe up\b",
-    r"\bfollow for more\b", r"\bshare this\b", r"\btag a friend\b", r"\bsave this\b",
+    r"\blink in bio\b",
+    r"\bcomment below\b",
+    r"\bdm me\b",
+    r"\bswipe up\b",
+    r"\bfollow for more\b",
+    r"\bshare this\b",
+    r"\btag a friend\b",
+    r"\bsave this\b",
 ]

@@ -4,7 +4,7 @@ ONLY. This is NOT part of the default training pipeline (scripts/train_model.py)
 and is never invoked automatically.
 
 Result (see project notes): PCA on caption embeddings, fit on train-split only,
-32 components (PRD §8.1's own figure), explained_variance_ratio ~0.997.
+32 components (PRD's own figure), explained_variance_ratio ~0.997.
 Outcome: ROC-AUC 0.7462 -> 0.7287, Spearman 0.3583 -> 0.3411 — both metrics
 regressed slightly. Decision: reverted from the shipped model. This script
 exists only so the experiment can be re-run exactly if needed later.
@@ -33,7 +33,7 @@ from ml.models import train_classifier, train_regressor
 
 FEATURES_PATH = Path(__file__).resolve().parents[1] / "data" / "features.parquet"
 EXPERIMENT_DIR = Path(__file__).resolve().parents[1] / "data" / "experiments"
-PCA_COMPONENTS = 32  # PRD §8.1's own stated figure, not tuned
+PCA_COMPONENTS = 32  # PRD's own stated figure, not tuned
 
 
 def main():

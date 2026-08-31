@@ -8,7 +8,11 @@ import uuid
 import numpy as np
 import pytest
 
-from ml.embedding_reduction import fit_pca, transform_content_ids, transform_single_embedding
+from ml.embedding_reduction import (
+    fit_pca,
+    transform_content_ids,
+    transform_single_embedding,
+)
 
 
 def _make_embeddings(n, dim=384, seed=0):
@@ -30,7 +34,9 @@ def test_fit_pca_depends_only_on_given_content_ids_not_full_map():
     pca_isolated = fit_pca(train_ids, train_map, n_components=5)
     pca_with_full_map_available = fit_pca(train_ids, full_map, n_components=5)
 
-    np.testing.assert_allclose(pca_isolated.components_, pca_with_full_map_available.components_)
+    np.testing.assert_allclose(
+        pca_isolated.components_, pca_with_full_map_available.components_
+    )
 
 
 def test_transform_content_ids_produces_nan_for_missing_embedding():

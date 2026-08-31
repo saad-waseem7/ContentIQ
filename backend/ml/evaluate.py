@@ -15,9 +15,13 @@ def classification_metrics(y_true: pd.Series, y_pred_proba: np.ndarray) -> dict:
     }
 
 
-def spearman_within_user(df: pd.DataFrame, actual_col: str, predicted_col: str,
-                          min_rows: int = cfg.MIN_TEST_ROWS_FOR_SPEARMAN) -> float:
-    """Mean of per-user Spearman rho, per §8.2 'within-user Spearman ρ'.
+def spearman_within_user(
+    df: pd.DataFrame,
+    actual_col: str,
+    predicted_col: str,
+    min_rows: int = cfg.MIN_TEST_ROWS_FOR_SPEARMAN,
+) -> float:
+    """Mean of per-user Spearman rho, per PRD 'within-user Spearman ρ'.
     Users with fewer than min_rows test points are excluded. A user whose
     actual/predicted values are constant across their test rows produces an
     undefined correlation by definition (not a bug) — ConstantInputWarning

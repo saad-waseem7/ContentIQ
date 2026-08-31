@@ -14,7 +14,6 @@ import pandas as pd
 import shap
 
 
-
 def compute_shap_values(model, X_test: pd.DataFrame) -> np.ndarray:
     explainer = shap.TreeExplainer(model)
     with warnings.catch_warnings():
