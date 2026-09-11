@@ -1,6 +1,6 @@
 # ContentIQ
 
-**A personalized content performance coach.** ContentIQ learns what actually works for an individual creator, rather than applying generic best practices. It models each post against that creator's historical baseline, then uses the resulting model to generate, rank, and score new content ideas.
+**A personalized content performance coach.** ContentIQ learns what actually works for an individual creator, rather than applying generic best practices. It models each post against that creator's own historical baseline, then uses that model to generate, rank, and score new content ideas.
 
 The project is built end to end: synthetic data generation, leakage-safe feature engineering, ML training with SHAP-based interpretability, LLM-grounded recommendations, an Insight Engine, and a full-stack web application running in containers.
 
@@ -83,21 +83,39 @@ docker-compose.yml
 
 ### Prerequisites
 
-- Docker Desktop
+- Docker and Docker Compose
 - Git
 - Python 3.11 or later for the synthetic data generator
 
 The frontend, backend, PostgreSQL, and MLflow services run in Docker. Node.js is only needed when working on the frontend outside its container.
 
+On Linux, check whether a native PostgreSQL installation is already using port 5432:
+
+```bash
+sudo ss -tlnp | grep 5432
+```
+
+If it is, set `POSTGRES_PORT=5433` in `.env`. `DATABASE_URL` should still use `db:5432`, because it is resolved inside the Docker network.
+
 ### Start the application
 
 From the repository root:
 
-```powershell
-Copy-Item .env.example .env
+```bash
+cp .env.example .env
 docker compose up --build -d
 docker compose exec api alembic upgrade head
 ```
+
+On Windows, use `Copy-Item .env.example .env` instead of `cp`.
+
+The project uses two `.env` files when running the Python application locally or from its mounted container directory. The root `.env` configures Docker Compose; `backend/.env` is read by the application itself. Keep both complete copies of the required database and MLflow settings if you create `backend/.env` directly:
+
+```bash
+cp .env.example backend/.env
+```
+
+Add any `LLM_PROVIDER`, `GEMINI_API_KEY`, and `GEMINI_MODEL` values to the appropriate environment as well. Never commit either file.
 
 The Compose stack starts all services together:
 
@@ -113,10 +131,14 @@ No separate frontend or backend startup command is required. Migrations are not 
 
 The generator creates multi-niche creator data with planted performance effects and sends it to the running API through `/ingest`.
 
-```powershell
-python -m pip install -r synthetic_data/requirements.txt
+```bash
+python3.11 -m venv synthetic_data/venv
+source synthetic_data/venv/bin/activate
+pip install -r synthetic_data/requirements.txt
 python synthetic_data/generator.py
 ```
+
+On Windows, activate the environment with `synthetic_data\\venv\\Scripts\\activate`.
 
 ### Build features and train the model
 
@@ -155,7 +177,7 @@ To use Google Gemini, set these values in the root `.env` file and restart the A
 ```dotenv
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=your_google_ai_studio_key
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3.6-flash
 ```
 
 The model name is configurable. Obtain keys from [Google AI Studio](https://aistudio.google.com/apikey), and never commit the key to the repository. Gemini failures, blocked responses, invalid JSON, and schema violations are surfaced through the recommendation API's error handling.
@@ -235,6 +257,8 @@ docker compose exec frontend npm test
 
 The backend suite covers ingestion, temporal splitting, feature leakage, embeddings, clustering, insights, model scoring, leaderboard behavior, recommendation selection, LLM validation, and API error handling. GitHub Actions runs the backend suite against a clean PostgreSQL and pgvector service, applies migrations, and installs the ML dependencies. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
+The full pipeline has also been reproduced from a clean database on Windows, Fedora, and Ubuntu. All four user-facing flows (Leaderboard, Insights, Daily Recommendation with feedback, and Predict) were manually verified end to end.
+
 ## Model results
 
 Latest project evaluation results are summarized below. Results may vary when the synthetic dataset or training configuration changes.
@@ -248,17 +272,16 @@ Latest project evaluation results are summarized below. Results may vary when th
 
 The regressor gap is retained as an honest limitation. The PCA-on-embeddings experiment was measured and found to slightly regress the headline metrics, so it remains available for reproducibility but is not used in production serving.
 
+Recommendation diversity was evaluated with live Gemini output. Moving from one shared prompt to three distinct strategy directives eliminated identical hooks and topics across all candidates, increased the average classifier score spread from 0.076 to 0.295, and improved the rate at which the winner matched a standout personal pattern from 88% to 100%.
+
 ## Documentation
 
 - [Demo script](docs/DEMO_SCRIPT.md): a 10-15 minute walkthrough of the full system.
 - [Known limitations](docs/KNOWN_LIMITATIONS.md): current product and modeling gaps and why they are deferred.
+- [Final project status](docs/FINAL_PROJECT_STATUS.md): implementation summary, validation results, and deferred scope.
 
 ## Scope and roadmap
 
 The current MVP does not include authentication, scheduled retraining or baseline refresh jobs, production feedback learning, OAuth, real social-platform connectors, automatic ingestion, or CSV import. Daily recommendations are generated manually through the endpoint; there is no scheduler, uniqueness rule, or recommendation-history endpoint.
 
 The next product steps are scheduled baseline and retraining jobs, stronger feedback-loop learning, connector abstractions with one real platform, and continued evaluation hardening.
-
-## License
-
-MIT
