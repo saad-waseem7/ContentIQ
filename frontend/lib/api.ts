@@ -170,3 +170,14 @@ export async function predictIdea(userId: string, payload: PredictRequest): Prom
   });
   return handle<PredictResponse>(res);
 }
+
+export interface RecommendationHistoryResponse {
+  user_id: string;
+  count: number;
+  recommendations: RecommendationResponse[];
+}
+
+export async function getRecommendationHistory(userId: string): Promise<RecommendationHistoryResponse> {
+  const res = await fetch(`${BASE_URL}/recommendations?user_id=${encodeURIComponent(userId)}`);
+  return handle<RecommendationHistoryResponse>(res);
+}

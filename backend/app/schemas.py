@@ -267,3 +267,8 @@ class PredictRequest(BaseModel):
 
 class PredictResponse(BaseModel):
     predicted_score: float
+
+class RecommendationHistoryResponse(BaseModel):
+    user_id: str
+    count: int
+    recommendations: list[RecommendationResponse]

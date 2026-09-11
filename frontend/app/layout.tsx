@@ -46,6 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     <NavLink href="/leaderboard">Leaderboard</NavLink>
                     <NavLink href="/recommend">Daily Recommendation</NavLink>
                     <NavLink href="/insights">Insights</NavLink>
+                    <NavLink href="/history">History</NavLink>
                   </nav>
                 </div>
                 <ThemeToggle />

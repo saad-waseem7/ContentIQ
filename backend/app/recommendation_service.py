@@ -33,6 +33,22 @@ class NoWinningContentError(Exception):
 class UnknownRecommendationError(Exception):
     pass
 
+class UserNotFoundError(Exception):
+    """No user exists with this id — distinct from NoWinningContentError,
+    which means the user exists but has no groundable history."""
+
+
+def get_recommendation_history(db: Session, user_id: str) -> list[models.Recommendation]:
+    user = db.get(models.User, uuid.UUID(user_id))
+    if user is None:
+        raise UserNotFoundError(f"No user found with id {user_id}")
+    return (
+        db.query(models.Recommendation)
+        .filter(models.Recommendation.user_id == uuid.UUID(user_id))
+        .order_by(models.Recommendation.created_at.desc())
+        .all()
+    )
+
 
 def _get_content_embeddings(db: Session, content_ids: list) -> dict:
     if not content_ids:

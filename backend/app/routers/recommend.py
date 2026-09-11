@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app import recommendation_service
 from app.database import get_db
 from app.leaderboard_service import FeatureDataNotBuiltError, UnknownUserError
-from app.schemas import FeedbackRequest, RecommendationResponse
+from app.schemas import FeedbackRequest, RecommendationHistoryResponse, RecommendationResponse
 from llm.coach import IdeaGenerationError
 from llm.factory import get_llm_client
 from ml.idea_scoring import ModelArtifactsNotFoundError
@@ -34,6 +34,17 @@ def create_recommendation(user_id: str, db: Session = Depends(get_db)):
     except IdeaGenerationError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return _to_response(rec)
+
+
+@router.get("/recommendations", response_model=RecommendationHistoryResponse)
+def get_recommendation_history(user_id: str, db: Session = Depends(get_db)):
+    try:
+        recs = recommendation_service.get_recommendation_history(db, user_id)
+    except recommendation_service.UserNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return RecommendationHistoryResponse(
+        user_id=user_id, count=len(recs), recommendations=[_to_response(r) for r in recs]
+    )
 
 
 @router.post("/recommendations/{recommendation_id}/feedback", response_model=RecommendationResponse)
