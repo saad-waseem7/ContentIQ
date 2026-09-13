@@ -6,6 +6,8 @@ Validates output against the SAME closed lists already enforced elsewhere
 """
 
 import json
+import concurrent.futures
+import time
 
 from pydantic import BaseModel, ValidationError, field_validator
 
@@ -148,31 +150,47 @@ def generate_idea(
 def generate_ideas(
     llm_client: LLMClient, niche: str, grounding_posts: list[dict], n: int
 ) -> list[dict]:
-    """Generates up to n candidate ideas, each assigned a distinct strategic
-    directive from STRATEGY_DIRECTIVES (cycled if n exceeds the list length)
-    so candidates represent genuinely different strategic angles rather than
-    n independent draws of an identical prompt. Reuses generate_idea's
-    existing validation/retry logic unchanged. Tolerates partial failure:
-    if some calls fail (malformed output, safety filter block, rate limit,
-    etc.) but at least one succeeds, returns whatever succeeded. Only raises
-    if ALL n attempts fail."""
-    ideas = []
-    errors = []
-    for i in range(n):
-        directive = STRATEGY_DIRECTIVES[i % len(STRATEGY_DIRECTIVES)]
-        try:
-            ideas.append(
-                generate_idea(
-                    llm_client,
-                    niche=niche,
-                    grounding_posts=grounding_posts,
-                    directive=directive,
-                )
-            )
-        except IdeaGenerationError as e:
-            errors.append(str(e))
-    if not ideas:
+    """Generates up to n candidate ideas CONCURRENTLY (ThreadPoolExecutor) —
+    each candidate is an independent, blocking network call to the LLM;
+    running them in parallel cuts wall-clock time roughly from n sequential
+    round-trips to ~1. Each future is still routed through the unmodified
+    generate_idea() — same directive assignment, same validation/retry
+    guardrails, same partial-failure tolerance as before. Only raises if
+    ALL n attempts fail.
+
+    Note: assumes the underlying LLMClient is safe to call concurrently
+    from multiple threads (true for stateless per-request HTTP calls, which
+    is how both MockLLMClient and GeminiClient are implemented). If a future
+    provider integration maintains per-call mutable state, this assumption
+    would need revisiting.
+    """
+    directives = [STRATEGY_DIRECTIVES[i % len(STRATEGY_DIRECTIVES)] for i in range(n)]
+    ideas: list[dict | None] = [None] * n
+    errors: list[str] = []
+
+    start = time.perf_counter()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n) as executor:
+        future_to_index = {
+            executor.submit(
+                generate_idea, llm_client, niche, grounding_posts, directives[i]
+            ): i
+            for i in range(n)
+        }
+        for future in concurrent.futures.as_completed(future_to_index):
+            idx = future_to_index[future]
+            try:
+                ideas[idx] = future.result()
+            except IdeaGenerationError as e:
+                errors.append(str(e))
+    elapsed = time.perf_counter() - start
+
+    successful = [idea for idea in ideas if idea is not None]
+    print(
+        f"[generate_ideas] {len(successful)}/{n} candidates generated concurrently in {elapsed:.2f}s"
+    )
+
+    if not successful:
         raise IdeaGenerationError(
             f"Failed to generate any valid candidates after {n} attempts: {errors}"
         )
-    return ideas
+    return successful

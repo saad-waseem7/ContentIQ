@@ -76,7 +76,7 @@ export default function InsightsPage() {
         helper={helper}
       />
 
-      {loading && <LoadingMessage text="Analyzing performance patterns..." />}
+      {loading && <LoadingMessage text="Analyzing Performance Patterns..." />}
       {!loading && error && <ErrorMessage text={error} />}
       {!loading && !error && data && (
         <>

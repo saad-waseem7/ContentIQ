@@ -5,6 +5,8 @@ from llm.coach import STRATEGY_DIRECTIVES
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import pytest
+import threading
+import time
 
 from llm.base import LLMClient, LLMGenerationError
 from llm.coach import IdeaGenerationError, generate_idea
@@ -15,6 +17,55 @@ GROUNDING_POSTS = [
     {"content_type": "carousel", "hook_type": "story", "topic_tags": ["transformation"], "performance_z": 2.1}
 ]
 
+
+class RecordingClient(LLMClient):
+    """Thread-safe — concurrent generate_ideas() calls this from multiple
+    threads simultaneously."""
+    def __init__(self):
+        self.prompts = []
+        self._lock = threading.Lock()
+
+    def generate(self, prompt: str) -> str:
+        with self._lock:
+            self.prompts.append(prompt)
+        return MockLLMClient().generate(prompt)
+
+
+def test_generate_ideas_assigns_a_distinct_directive_to_each_candidate():
+    client = RecordingClient()
+    generate_ideas(client, niche="fitness", grounding_posts=GROUNDING_POSTS, n=3)
+
+    assert len(client.prompts) == 3
+    # Completion order isn't guaranteed under concurrency — check by set
+    # membership, not position.
+    for directive in STRATEGY_DIRECTIVES:
+        assert any(directive in p for p in client.prompts)
+    assert len(set(client.prompts)) == 3
+
+
+def test_generate_ideas_cycles_directives_when_n_exceeds_directive_count():
+    client = RecordingClient()
+    generate_ideas(client, niche="fitness", grounding_posts=GROUNDING_POSTS, n=5)
+    assert len(client.prompts) == 5
+    directive_0_count = sum(1 for p in client.prompts if STRATEGY_DIRECTIVES[0] in p)
+    assert directive_0_count == 2  # indices 0 and 3 (3 % 3 == 0)
+
+
+def test_generate_ideas_runs_candidates_concurrently_not_sequentially():
+    """Proves real wall-clock benefit, not just correctness. A client with
+    a 0.1s delay per call: 3 sequential calls would take >=0.3s; concurrent
+    execution should complete well under that, with generous margin for
+    thread overhead to avoid flakiness."""
+    class SlowClient(LLMClient):
+        def generate(self, prompt: str) -> str:
+            time.sleep(0.1)
+            return MockLLMClient().generate(prompt)
+
+    start = time.perf_counter()
+    generate_ideas(SlowClient(), niche="fitness", grounding_posts=GROUNDING_POSTS, n=3)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 0.25  # well under 3x0.1=0.3s sequential, comfortable margin
 
 def test_valid_mock_response_succeeds():
     client = MockLLMClient()

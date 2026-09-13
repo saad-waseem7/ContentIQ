@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import "./globals.css";
 import { UserProvider } from "@/lib/UserContext";
 import { ThemeProvider } from "@/lib/ThemeContext";
+import { RecommendationProvider } from "@/lib/RecommendationContext";
 import { themeInitScript } from "@/lib/theme";
 import ThemeToggle from "@/components/ThemeToggle";
 
@@ -38,21 +39,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 min-h-screen font-sans transition-colors">
         <ThemeProvider>
           <UserProvider>
-            <div className="max-w-5xl mx-auto px-4 sm:px-6">
-              <header className="flex items-center justify-between gap-3 py-5 border-b border-slate-200 dark:border-slate-700">
-                <div className="flex items-center gap-6">
-                  <span className="text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100">ContentIQ</span>
-                  <nav className="flex gap-1">
-                    <NavLink href="/leaderboard">Leaderboard</NavLink>
-                    <NavLink href="/recommend">Daily Recommendation</NavLink>
-                    <NavLink href="/insights">Insights</NavLink>
-                    <NavLink href="/history">History</NavLink>
-                  </nav>
-                </div>
-                <ThemeToggle />
-              </header>
-              <main className="py-8">{children}</main>
-            </div>
+            <RecommendationProvider>
+              <div className="max-w-5xl mx-auto px-4 sm:px-6">
+                <header className="flex items-center justify-between gap-3 py-5 border-b border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center gap-6">
+                    <span className="text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100">ContentIQ</span>
+                    <nav className="flex gap-1">
+                      <NavLink href="/leaderboard">Leaderboard</NavLink>
+                      <NavLink href="/recommend">Daily Recommendation</NavLink>
+                      <NavLink href="/insights">Insights</NavLink>
+                      <NavLink href="/history">History</NavLink>
+                    </nav>
+                  </div>
+                  <ThemeToggle />
+                </header>
+                <main className="py-8">{children}</main>
+              </div>
+            </RecommendationProvider>
           </UserProvider>
         </ThemeProvider>
       </body>

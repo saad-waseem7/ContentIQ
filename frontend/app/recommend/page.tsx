@@ -1,16 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { generateRecommendation, submitFeedback, RecommendationResponse, ApiError } from "@/lib/api";
+import { generateRecommendation, submitFeedback, ApiError } from "@/lib/api";
 import { useUserId } from "@/lib/UserContext";
-import { LoadingMessage, EmptyMessage, ErrorMessage, messageForStatus } from "@/components/StatusMessage";
-import RecommendationCard from "@/components/RecommendationCard";
+import { useActiveRecommendation } from "@/lib/RecommendationContext";
+import { LoadingMessage, ErrorMessage, EmptyMessage, messageForStatus } from "@/components/StatusMessage";
 import PageHeader from "@/components/PageHeader";
+import RecommendationCard from "@/components/RecommendationCard";
 import TryYourIdeaPanel from "@/components/TryYourIdeaPanel";
 
 export default function RecommendPage() {
   const { userId } = useUserId();
-  const [rec, setRec] = useState<RecommendationResponse | null>(null);
+  const { activeRecommendation, setActiveRecommendation, updateActiveRecommendationStatus, clearActiveRecommendation } = useActiveRecommendation();
   const [loading, setLoading] = useState(false);
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,23 +21,18 @@ export default function RecommendPage() {
     setLoading(true);
     setError(null);
     generateRecommendation(userId)
-      .then(setRec)
-      .catch((e) => {
-        const msg = e instanceof ApiError ? messageForStatus(e.status, e.message) : "Couldn't reach the server.";
-        setError(msg);
-      })
+      .then((rec) => setActiveRecommendation(rec, userId))
+      .catch((e) => setError(e instanceof ApiError ? messageForStatus(e.status, e.message) : "Couldn't reach the server."))
       .finally(() => setLoading(false));
   }
 
   function handleFeedback(status: "actioned" | "dismissed") {
-    if (!rec) return;
+    if (!activeRecommendation) return;
     setFeedbackPending(true);
-    submitFeedback(rec.id, status)
-      .then(setRec)
-      .catch((e) => {
-        const msg = e instanceof ApiError ? messageForStatus(e.status, e.message) : "Couldn't reach the server.";
-        setError(msg);
-      })
+    setError(null);
+    submitFeedback(activeRecommendation.id, status)
+      .then(updateActiveRecommendationStatus)
+      .catch((e) => setError(e instanceof ApiError ? messageForStatus(e.status, e.message) : "Couldn't reach the server."))
       .finally(() => setFeedbackPending(false));
   }
 
@@ -55,10 +51,19 @@ export default function RecommendPage() {
           >
             {loading ? "Generating..." : "Generate Recommendation"}
           </button>
-          {loading && <LoadingMessage text="Generating recommendation..." />}
+          {loading && <LoadingMessage text="Generating Recommendation..." />}
           {!loading && error && <ErrorMessage text={error} />}
-          {!loading && !error && !rec && <EmptyMessage text="Click Generate to get today's recommendation." />}
-          {!loading && rec && <RecommendationCard rec={rec} onFeedback={handleFeedback} feedbackPending={feedbackPending} />}
+          {!loading && !error && !activeRecommendation && <EmptyMessage text="Click Generate to get today's recommendation." />}
+          {!loading && activeRecommendation && (
+            <div className="mb-8">
+              <RecommendationCard
+                rec={activeRecommendation}
+                onFeedback={handleFeedback}
+                onClear={clearActiveRecommendation}
+                feedbackPending={feedbackPending}
+              />
+            </div>
+          )}
           <TryYourIdeaPanel />
         </>
       )}

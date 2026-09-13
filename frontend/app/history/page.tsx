@@ -6,7 +6,7 @@ import { useUserId } from "@/lib/UserContext";
 import { LoadingMessage, EmptyMessage, ErrorMessage, messageForStatus } from "@/components/StatusMessage";
 import PageHeader from "@/components/PageHeader";
 import Card from "@/components/Card";
-import { formatDate } from "@/lib/labels";
+import { formatDate, formatIdeaText } from "@/lib/labels";
 
 function statusBadge(status: string) {
   if (status === "actioned") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300";
@@ -41,7 +41,7 @@ export default function HistoryPage() {
 
   return (
     <div>
-      <PageHeader title="Recommendation history" subtitle="Previously generated recommendations for this creator." />
+      <PageHeader title="Recommendation History" subtitle="Previously generated recommendations for this creator." />
 
       {!userId && <EmptyMessage text="Enter a user ID above to see their recommendation history." />}
       {userId && loading && <LoadingMessage text="Loading history..." />}
@@ -57,7 +57,7 @@ export default function HistoryPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <p className="text-xs text-slate-400 dark:text-slate-500 mb-1">{formatDate(rec.created_at)}</p>
-                    <p className="text-sm text-slate-800 dark:text-slate-200">{rec.idea_text}</p>
+                    <p className="text-sm text-slate-800 dark:text-slate-200">{formatIdeaText(rec.idea_text)}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">

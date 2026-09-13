@@ -54,3 +54,24 @@ export function describePerformance(z: number, n: number): {
   }
   return { direction, sdLine, postsLine: `Based on ${n} post${n === 1 ? "" : "s"}` };
 }
+
+// Recommendation idea_text is stored server-side as a single opaque string:
+// "[content_type / hook_type hook / topic] caption" (see
+// recommendation_service.py::_format_idea_text). The backend value is never
+// changed — this only reformats it for display, parsing the bracket and
+// running each token through the existing label() utility. Falls back to
+// the raw string unchanged if the format doesn't match, so malformed or
+// future formats never crash or show "undefined".
+export function formatIdeaText(ideaText: string): string {
+  const match = ideaText.match(/^\[(.+?)\s*\/\s*(.+?)\s*\/\s*(.+?)\]\s*(.*)$/s);
+  if (!match) return ideaText;
+
+  const [, rawContentType, rawHookBlock, rawTopic, caption] = match;
+  const rawHookType = rawHookBlock.replace(/\s*hook\s*$/i, "").trim();
+
+  const formattedContentType = label("content_type", rawContentType.trim());
+  const formattedHookType = `${label("hook_type", rawHookType)} Hook`;
+  const formattedTopic = label("topic", rawTopic.trim());
+
+  return `[${formattedContentType} / ${formattedHookType} / ${formattedTopic}] ${caption}`.trim();
+}
