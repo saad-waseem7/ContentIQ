@@ -5,6 +5,16 @@ vs ml/*.py. Every threshold here exists to enforce one explicit principle:
 never present a statistically weak group as a strong insight.
 """
 
+"""
+Dataset-scale review (post 125-user / 5-niche / ~21.5k-post expansion):
+every threshold below was re-checked against actual current group sizes
+(~24 other users per niche, several thousand posts per niche, ~172 posts
+per user on average) and confirmed to still function correctly — none
+block legitimate comparisons, none under-gate thin evidence. No value was
+changed on the basis of dataset size alone: these are correctness
+thresholds, not tuning knobs to inflate just because more data exists.
+"""
+
 # Stricter than features.config.MIN_GROUP_SIZE_FOR_ZSCORE (3) — that
 # threshold protects the MODEL's training labels from too-few-point groups;
 # this protects a HUMAN-FACING claim, which warrants more evidence.
@@ -43,13 +53,3 @@ TIME_WINDOWS = [
     ("evening", range(17, 22)),
     ("late_night", range(22, 24)),
 ]
-
-"""
-Dataset-scale review (post 125-user / 5-niche / ~21.5k-post expansion):
-every threshold below was re-checked against actual current group sizes
-(~24 other users per niche, several thousand posts per niche, ~172 posts
-per user on average) and confirmed to still function correctly — none
-block legitimate comparisons, none under-gate thin evidence. No value was
-changed on the basis of dataset size alone: these are correctness
-thresholds, not tuning knobs to inflate just because more data exists.
-"""

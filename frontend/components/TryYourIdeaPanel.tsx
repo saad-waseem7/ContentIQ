@@ -9,8 +9,8 @@ import { CONTENT_TYPE_LABELS, HOOK_TYPE_LABELS, PLATFORM_LABELS } from "@/lib/la
 import { messageForStatus } from "@/components/StatusMessage";
 
 function scoreBadge(score: number) {
-  if (score >= 0.7) return { text: "Strong fit", classes: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" };
-  if (score >= 0.4) return { text: "Worth trying", classes: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" };
+  if (score >= 0.7) return { text: "Strong Fit", classes: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" };
+  if (score >= 0.4) return { text: "Worth Trying", classes: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" };
   return { text: "Experimental", classes: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" };
 }
 

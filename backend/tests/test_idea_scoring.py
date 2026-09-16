@@ -4,7 +4,6 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from datetime import datetime, timezone
-
 import pytest
 
 from ml import config as ml_cfg
@@ -85,9 +84,7 @@ def test_build_idea_feature_row_falls_back_to_planned_posted_at_without_best_tim
     ctx = dict(USER_CONTEXT)  # no best_posting_hour/weekday keys
     df = build_idea_feature_row(IDEA, ctx)
     assert df["posting_hour"].iloc[0] == USER_CONTEXT["planned_posted_at"].hour
-    assert (
-        df["posting_day_of_week"].iloc[0] == USER_CONTEXT["planned_posted_at"].weekday()
-    )
+    assert (df["posting_day_of_week"].iloc[0] == USER_CONTEXT["planned_posted_at"].weekday())
 
 
 def test_build_idea_feature_row_is_weekend_derived_from_best_weekday():

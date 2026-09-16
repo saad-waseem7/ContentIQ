@@ -13,7 +13,7 @@ function rankBadgeClasses(rank: number): string {
 
 function performanceLabel(z: number): { text: string; classes: string } {
   if (z > 1) return { text: "Strong", classes: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" };
-  if (z < -0.5) return { text: "Below avg", classes: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" };
+  if (z < -0.5) return { text: "Below Average", classes: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" };
   return { text: "Average", classes: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" };
 }
 

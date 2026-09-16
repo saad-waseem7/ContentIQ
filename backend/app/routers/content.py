@@ -1,5 +1,5 @@
 """
-GET /content - Content Performance Leaderboard (MVP vertical slice).
+GET /content - Content Performance Leaderboard.
 
 Serves the Week 3/4 feature table as a per-user ranked leaderboard.
 Read-only, no new modeling or DB schema. See leaderboard_service.py's

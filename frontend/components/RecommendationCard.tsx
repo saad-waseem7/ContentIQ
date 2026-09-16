@@ -7,8 +7,8 @@ import InfoTooltip from "@/components/InfoTooltip";
 import { label as humanLabel, formatIdeaText } from "@/lib/labels";
 
 function scoreBadge(score: number) {
-  if (score >= 0.7) return { text: "Strong fit", classes: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" };
-  if (score >= 0.4) return { text: "Worth trying", classes: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" };
+  if (score >= 0.7) return { text: "Strong Fit", classes: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" };
+  if (score >= 0.4) return { text: "Worth Trying", classes: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" };
   return { text: "Experimental", classes: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" };
 }
 
@@ -68,7 +68,7 @@ export default function RecommendationCard({
               disabled={feedbackPending}
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400 text-white rounded-md text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 transition-colors"
             >
-              Mark actioned
+              Mark Actioned
             </button>
             <button
               onClick={() => onFeedback("dismissed")}

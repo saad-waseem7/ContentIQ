@@ -34,9 +34,7 @@ def test_fit_pca_depends_only_on_given_content_ids_not_full_map():
     pca_isolated = fit_pca(train_ids, train_map, n_components=5)
     pca_with_full_map_available = fit_pca(train_ids, full_map, n_components=5)
 
-    np.testing.assert_allclose(
-        pca_isolated.components_, pca_with_full_map_available.components_
-    )
+    np.testing.assert_allclose(pca_isolated.components_, pca_with_full_map_available.components_)
 
 
 def test_transform_content_ids_produces_nan_for_missing_embedding():
