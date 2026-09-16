@@ -57,6 +57,19 @@ def _follower_tier(follower_count: Optional[float]) -> str:
 def build_idea_feature_row(idea: dict, user_context: dict) -> pd.DataFrame:
     posted_at = user_context["planned_posted_at"]
     caption = idea["sample_caption"]
+
+    # posting_hour/posting_day_of_week: prefer the user's historically
+    # best-performing time (best_posting_hour/best_posting_weekday, set by
+    # recommendation_service._build_base_user_context) over the wall-clock
+    # moment this request happens to be made. Falls back to deriving from
+    # planned_posted_at if those keys are absent (backward compatibility
+    # with any caller that doesn't set them).
+    best_hour = user_context.get("best_posting_hour")
+    best_weekday = user_context.get("best_posting_weekday")
+    posting_hour = best_hour if best_hour is not None else cf.posting_hour(posted_at)
+    posting_day_of_week = best_weekday if best_weekday is not None else cf.posting_day_of_week(posted_at)
+    is_weekend = posting_day_of_week >= 5
+
     row = {
         "content_type": idea["content_type"],
         "hook_type": idea["hook_type"],
@@ -68,12 +81,12 @@ def build_idea_feature_row(idea: dict, user_context: dict) -> pd.DataFrame:
         "duration_sec": idea.get("duration_sec"),
         "caption_length_chars": cf.caption_length_chars(caption),
         "caption_length_words": cf.caption_length_words(caption),
-        "hashtag_count": 0,  # LLM output has no separate hashtags field for MVP
+        "hashtag_count": 0,
         "emoji_count": cf.emoji_count(caption),
         "has_cta": cf.has_cta(caption),
-        "posting_hour": cf.posting_hour(posted_at),
-        "posting_day_of_week": cf.posting_day_of_week(posted_at),
-        "is_weekend": cf.is_weekend(posted_at),
+        "posting_hour": posting_hour,
+        "posting_day_of_week": posting_day_of_week,
+        "is_weekend": is_weekend,
         "sentiment_score": cf.sentiment_score(caption),
         "follower_count": user_context.get("follower_count"),
         "days_since_last_post": user_context.get("days_since_last_post"),

@@ -123,7 +123,7 @@ export default function InsightsPage() {
                       data.trend.direction === "improving" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" :
                       data.trend.direction === "declining" ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" :
                       "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}>
-                      {data.trend.direction === "improving" ? "Trending up" : data.trend.direction === "declining" ? "Trending down" : "Stable"}
+                      {data.trend.direction === "improving" ? "Trending Up" : data.trend.direction === "declining" ? "Trending down" : "Stable"}
                     </span>
                   )}
                 >
@@ -190,7 +190,7 @@ export default function InsightsPage() {
                                 {humanLabel("content_type", c.dominant_content_type)} · {humanLabel("hook_type", c.dominant_hook_type)} · {humanLabel("topic", c.dominant_topic_tag)}
                               </span>
                               {c.is_high_performing && (
-                                <span className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 px-1.5 py-0.5 rounded-full">high performing</span>
+                                <span className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 px-1.5 py-0.5 rounded-full">High Performing</span>
                               )}
                             </div>
                             <p className={`text-xs ${color}`}>{perf.sdLine}</p>

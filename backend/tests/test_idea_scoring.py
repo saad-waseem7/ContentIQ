@@ -41,7 +41,9 @@ USER_CONTEXT = {
 
 def test_feature_row_has_all_required_columns():
     df = build_idea_feature_row(IDEA, USER_CONTEXT)
-    expected_before_prepare = [c for c in ml_cfg.CATEGORICAL_FEATURES if c != "primary_topic_tag"] + ml_cfg.NUMERIC_FEATURES
+    expected_before_prepare = [
+        c for c in ml_cfg.CATEGORICAL_FEATURES if c != "primary_topic_tag"
+    ] + ml_cfg.NUMERIC_FEATURES
     for col in expected_before_prepare:
         assert col in df.columns, f"missing column: {col}"
     assert "topic_tags" in df.columns
@@ -67,3 +69,30 @@ def test_score_idea_raises_when_artifacts_missing(monkeypatch, tmp_path):
     monkeypatch.setattr("ml.idea_scoring.CATEGORY_LEVELS_PATH", tmp_path / "nope.json")
     with pytest.raises(ModelArtifactsNotFoundError):
         load_category_levels()
+
+
+def test_build_idea_feature_row_uses_best_posting_time_when_present():
+    ctx = dict(USER_CONTEXT)
+    ctx["best_posting_hour"] = 20
+    ctx["best_posting_weekday"] = 3  # Thursday
+    df = build_idea_feature_row(IDEA, ctx)
+    assert df["posting_hour"].iloc[0] == 20
+    assert df["posting_day_of_week"].iloc[0] == 3
+    assert df["is_weekend"].iloc[0] == 0
+
+
+def test_build_idea_feature_row_falls_back_to_planned_posted_at_without_best_time():
+    ctx = dict(USER_CONTEXT)  # no best_posting_hour/weekday keys
+    df = build_idea_feature_row(IDEA, ctx)
+    assert df["posting_hour"].iloc[0] == USER_CONTEXT["planned_posted_at"].hour
+    assert (
+        df["posting_day_of_week"].iloc[0] == USER_CONTEXT["planned_posted_at"].weekday()
+    )
+
+
+def test_build_idea_feature_row_is_weekend_derived_from_best_weekday():
+    ctx = dict(USER_CONTEXT)
+    ctx["best_posting_hour"] = 10
+    ctx["best_posting_weekday"] = 6  # Sunday
+    df = build_idea_feature_row(IDEA, ctx)
+    assert df["is_weekend"].iloc[0] == 1

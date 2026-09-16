@@ -1,16 +1,40 @@
 """
-Orchestrates: grounding retrieval -> LLM candidate generation (N ideas) ->
-feature-ization -> classifier scoring of EACH candidate -> best-candidate
-selection -> persistence. Reuses leaderboard_service (grounding), llm.coach
-(generation), ml.idea_scoring (scoring, called once per candidate) —
-unchanged. Only the winning candidate is persisted; losing candidates are
-scored, compared, then discarded (see module docstring / Checkpoint notes
-on why this is a flagged-open product decision, not silently made).
+Orchestrates: grounding retrieval -> LLM idea generation -> feature-ization
+-> classifier scoring -> best-candidate selection -> persistence. Reuses
+leaderboard_service (grounding), llm.coach (generation), ml.idea_scoring
+(scoring, called once per candidate) — unchanged. Only the winning
+candidate is persisted; losing candidates are scored, compared, then
+discarded.
+
+Posting-time semantics (fixed after the recommendation-score-variation
+investigation): a recommendation's posting_hour/posting_day_of_week
+features are derived from this user's own historically best-performing
+posting time (mode across their real winning posts), NOT from the
+wall-clock moment the request happens to be made. Previously, using
+datetime.now() meant identical ideas could score anywhere from ~44% to
+~91% purely based on what second the Generate button was clicked, since
+posting_hour is the model's single strongest feature by a wide margin
+(confirmed via SHAP). Anchoring on the user's real best-performing time
+instead answers the question a "predicted score" should actually answer:
+"how would this idea likely perform if posted well for this creator,"
+not "how would it perform if posted this exact instant."
+
+The LLM's own best_posting_window text field is intentionally NOT
+parsed/used here — it remains a display-only string. Parsing free-form
+LLM text into a reliable hour/weekday would be fragile (observed formats
+vary: "Tuesday 7-9pm", "6:00 PM - 8:00 PM", "18:00-20:00 EST") and less
+robust than deriving the value deterministically from real historical
+data already loaded for grounding.
+
+days_since_last_post is NOT affected by this change — it correctly still
+anchors on the real current time, since "how long since this user's last
+post" is genuinely about today, not about a hypothetical best posting time.
 """
 import uuid
 from datetime import datetime, timezone
 
 import numpy as np
+import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -23,7 +47,7 @@ from llm.coach import generate_ideas
 from ml.idea_scoring import score_idea
 
 GROUNDING_TOP_K = 5
-N_CANDIDATES = 3  # bounded by Gemini free-tier rate limits — see Checkpoint notes
+N_CANDIDATES = 3
 
 
 class NoWinningContentError(Exception):
@@ -33,21 +57,9 @@ class NoWinningContentError(Exception):
 class UnknownRecommendationError(Exception):
     pass
 
+
 class UserNotFoundError(Exception):
-    """No user exists with this id — distinct from NoWinningContentError,
-    which means the user exists but has no groundable history."""
-
-
-def get_recommendation_history(db: Session, user_id: str) -> list[models.Recommendation]:
-    user = db.get(models.User, uuid.UUID(user_id))
-    if user is None:
-        raise UserNotFoundError(f"No user found with id {user_id}")
-    return (
-        db.query(models.Recommendation)
-        .filter(models.Recommendation.user_id == uuid.UUID(user_id))
-        .order_by(models.Recommendation.created_at.desc())
-        .all()
-    )
+    """No user exists with this id."""
 
 
 def _get_content_embeddings(db: Session, content_ids: list) -> dict:
@@ -61,6 +73,28 @@ def _get_content_embeddings(db: Session, content_ids: list) -> dict:
     return {cid: np.array(vec, dtype=float) for cid, vec in rows}
 
 
+def _compute_best_posting_time(winners_df: pd.DataFrame, fallback_hour: int, fallback_weekday: int) -> tuple[int, int]:
+    """This user's own historically best-performing posting hour/weekday,
+    derived as the mode across their real winning posts. Falls back to the
+    given (current-time-derived) values if winners_df lacks usable
+    posting_hour/posting_day_of_week data — including the columns being
+    entirely absent, not just containing NaN — handling malformed/missing
+    data safely rather than raising. pandas .mode() returns ties sorted
+    ascending, so the tie-break (lowest value) is deterministic."""
+    required_cols = {"posting_hour", "posting_day_of_week"}
+    if not required_cols.issubset(winners_df.columns):
+        return fallback_hour, fallback_weekday
+
+    valid = winners_df.dropna(subset=["posting_hour", "posting_day_of_week"])
+    if valid.empty:
+        return fallback_hour, fallback_weekday
+
+    hour_mode = valid["posting_hour"].mode()
+    weekday_mode = valid["posting_day_of_week"].mode()
+    best_hour = int(hour_mode.iloc[0]) if not hour_mode.empty else fallback_hour
+    best_weekday = int(weekday_mode.iloc[0]) if not weekday_mode.empty else fallback_weekday
+    return best_hour, best_weekday
+
 def _build_base_user_context(db, user_df, winners_df) -> dict:
     """Fields that do NOT depend on which specific idea is being scored —
     computed once per request, not once per candidate."""
@@ -70,8 +104,15 @@ def _build_base_user_context(db, user_df, winners_df) -> dict:
 
     by_time = user_df.sort_values("posted_at")
     most_recent = by_time.iloc[-1]
+
     planned_posted_at = datetime.now(timezone.utc)
     days_since_last_post = (planned_posted_at - most_recent["posted_at"]).total_seconds() / 86400
+
+    best_posting_hour, best_posting_weekday = _compute_best_posting_time(
+        winners_df,
+        fallback_hour=planned_posted_at.hour,
+        fallback_weekday=planned_posted_at.weekday(),
+    )
 
     return {
         "niche": user_df["niche"].iloc[0],
@@ -79,6 +120,8 @@ def _build_base_user_context(db, user_df, winners_df) -> dict:
         "days_since_last_post": days_since_last_post,
         "is_first_post_for_user": False,
         "planned_posted_at": planned_posted_at,
+        "best_posting_hour": best_posting_hour,
+        "best_posting_weekday": best_posting_weekday,
         "_winner_centroid": centroid,
         "_recent_window_df": by_time.tail(RECENT_POSTS_WINDOW),
     }
@@ -86,9 +129,9 @@ def _build_base_user_context(db, user_df, winners_df) -> dict:
 
 def _complete_context_for_idea(base_context: dict, idea: dict, caption_embedding: np.ndarray) -> dict:
     """Fields that DO depend on the specific candidate idea — content_type_share_recent
-    and similarity_to_prior_winners both vary per candidate (different content_type,
-    different caption embedding). Formulas identical to the prior single-idea
-    implementation — only WHEN they're computed changed, not the math."""
+    and similarity_to_prior_winners both vary per candidate. Formulas identical to
+    before — only WHEN posting_hour/day are computed changed (see module docstring),
+    not this function."""
     recent_window = base_context["_recent_window_df"]
     content_type_share_recent = float((recent_window["content_type"] == idea["content_type"]).mean())
 
@@ -104,13 +147,13 @@ def _complete_context_for_idea(base_context: dict, idea: dict, caption_embedding
     return ctx
 
 
+def _format_idea_text(idea: dict) -> str:
+    return f"[{idea['content_type']} / {idea['hook_type']} hook / {idea['primary_topic_tag']}] {idea['sample_caption']}"
+
+
 def _select_best_candidate(scored_candidates: list[tuple[dict, float]]) -> tuple[dict, float]:
     """Pure, directly unit-testable — no DB/LLM/model dependency."""
     return max(scored_candidates, key=lambda pair: pair[1])
-
-
-def _format_idea_text(idea: dict) -> str:
-    return f"[{idea['content_type']} / {idea['hook_type']} hook / {idea['primary_topic_tag']}] {idea['sample_caption']}"
 
 
 def generate_recommendation(db: Session, user_id: str, llm_client: LLMClient) -> models.Recommendation:
@@ -153,22 +196,11 @@ def generate_recommendation(db: Session, user_id: str, llm_client: LLMClient) ->
     return rec
 
 
-def update_recommendation_status(db: Session, recommendation_id: str, status: str) -> models.Recommendation:
-    rec = db.get(models.Recommendation, uuid.UUID(recommendation_id))
-    if rec is None:
-        raise UnknownRecommendationError(f"No recommendation found with id {recommendation_id}")
-    rec.status = status
-    db.commit()
-    db.refresh(rec)
-    return rec
-
-
 def score_custom_idea(db: Session, user_id: str, idea: dict) -> float:
     """Scores a user-supplied idea directly, skipping LLM generation. Reuses
     the exact same context-building and scoring path generate_recommendation
     uses for each candidate — only the source of `idea` differs. Not
-    persisted to `recommendations`: this is a one-off, on-demand check,
-    per Feature doc — 'separate from the daily feed.'"""
+    persisted to `recommendations`."""
     user_df = get_user_feature_rows(user_id)
     winners_df = user_df[user_df["has_sufficient_group_history"] & (user_df["label_overperformer"] == True)]  # noqa: E712
     if winners_df.empty:
@@ -178,3 +210,25 @@ def score_custom_idea(db: Session, user_id: str, idea: dict) -> float:
     caption_embedding = np.array(embed_texts([idea["sample_caption"]])[0])
     ctx = _complete_context_for_idea(base_context, idea, caption_embedding)
     return score_idea(idea, ctx)
+
+
+def get_recommendation_history(db: Session, user_id: str) -> list[models.Recommendation]:
+    user = db.get(models.User, uuid.UUID(user_id))
+    if user is None:
+        raise UserNotFoundError(f"No user found with id {user_id}")
+    return (
+        db.query(models.Recommendation)
+        .filter(models.Recommendation.user_id == uuid.UUID(user_id))
+        .order_by(models.Recommendation.created_at.desc())
+        .all()
+    )
+
+
+def update_recommendation_status(db: Session, recommendation_id: str, status: str) -> models.Recommendation:
+    rec = db.get(models.Recommendation, uuid.UUID(recommendation_id))
+    if rec is None:
+        raise UnknownRecommendationError(f"No recommendation found with id {recommendation_id}")
+    rec.status = status
+    db.commit()
+    db.refresh(rec)
+    return rec
