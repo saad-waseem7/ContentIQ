@@ -5,9 +5,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import uuid
 from datetime import datetime, timedelta, timezone
-
 import pandas as pd
-
 from app import insight_service as svc
 
 

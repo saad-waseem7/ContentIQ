@@ -1,6 +1,6 @@
 # ContentIQ
 
-**A personalized content performance coach.** ContentIQ learns what actually works for an individual creator, rather than applying generic best practices. It models each post against that creator's own historical baseline, then uses that model to generate, rank, and score new content ideas.
+**A personalized content performance coach.** ContentIQ learns what works for an individual creator instead of applying generic best practices. It models each post against that creator's own historical baseline, then uses that model to generate, rank, and score new content ideas.
 
 The project is built end to end: synthetic data generation, leakage-safe feature engineering, ML training with SHAP-based interpretability, LLM-grounded recommendations, an Insight Engine, and a full-stack web application running in containers.
 
@@ -11,6 +11,7 @@ The project is built end to end: synthetic data generation, leakage-safe feature
 - **Daily Recommendation:** asks the configured LLM for three strategically distinct candidates, scores every candidate with the trained classifier, and persists the highest-scoring idea with a data-grounded rationale.
 - **Try Your Own Idea:** `POST /predict` scores a creator-authored idea against the same feature and model pipeline without persisting it as a recommendation.
 - **Recommendation feedback:** creators can mark recommendations as `actioned` or `dismissed`.
+- **Recommendation History:** lists a user's saved recommendations from newest to oldest.
 
 ## Architecture
 
@@ -56,7 +57,8 @@ All application services run through Docker Compose. Database migrations, synthe
 - **Leakage-safe feature pipeline:** training features use an expanding window of strictly prior posts. Dedicated tests verify that future metrics cannot affect an earlier post's features or label.
 - **Planted-signal validation:** the synthetic dataset injects niche-specific `(hook_type, topic)` effects. SHAP analysis compares matching and non-matching rows within each niche to verify that the model recovers the signal.
 - **Honest evaluation:** the classifier is evaluated with a temporal per-user split and compared against a content-type-average baseline. The regressor's weaker Spearman result is retained as a documented limitation rather than hidden.
-- **Diverse recommendation candidates:** each LLM call receives a distinct safe, alternative, or experimental strategy directive. Candidates are independently featureized and scored before selection.
+- **Diverse recommendation candidates:** three LLM calls run concurrently, each with a distinct safe, alternative, or experimental strategy directive. Candidates are independently featureized and scored before selection.
+- **Stable recommendation scoring:** posting-time features use the user's historically best-performing hour and weekday. This prevents the same idea from receiving different scores simply because it was requested at a different time.
 - **Provider-agnostic LLM integration:** the recommendation pipeline depends on `LLMClient`, not a vendor SDK. The deterministic mock supports full local testing, while Gemini can be enabled through configuration.
 - **Structured LLM guardrails:** responses must be valid JSON using the backend's supported platform, content-type, and hook-type values. Invalid output is retried, and rationales must contain a numeric citation from the grounding data.
 - **Reproducible experiments:** MLflow records the data snapshot hash, parameters, metrics, trained models, feature importance, and SHAP artifacts.
@@ -144,7 +146,7 @@ On Windows, activate the environment with `synthetic_data\\venv\\Scripts\\activa
 
 Run these commands after data has been ingested:
 
-```powershell
+```bash
 docker compose exec api python scripts/compute_baselines.py
 docker compose exec api python scripts/generate_embeddings.py
 docker compose exec api python scripts/build_features.py
@@ -160,7 +162,7 @@ The pipeline creates or updates:
 
 Optional commands:
 
-```powershell
+```bash
 docker compose exec api python scripts/verify_mlflow.py
 docker compose exec api python scripts/evaluate_recommendations.py
 docker compose exec api python scripts/train_model_pca_experiment.py
@@ -190,8 +192,8 @@ The model name is configurable. Obtain keys from [Google AI Studio](https://aist
 4. Raw performance is calculated as `(likes + comments + shares + saves) / reach`.
 5. Over-performer labels compare a post with its historical `(user, platform, content_type)` baseline.
 6. `train_model.py` performs a temporal per-user split and trains LightGBM classifier and regressor models.
-7. The classifier and categorical levels are saved for serving; MLflow receives metrics, models, SHAP outputs, and the data snapshot hash.
-8. Recommendations retrieve top-performing posts, generate three grounded ideas, score every candidate using the same feature space, and persist only the winner.
+7. The classifier and categorical levels are saved for serving. MLflow receives metrics, models, SHAP outputs, and the data snapshot hash.
+8. Recommendations retrieve top-performing posts, generate three grounded ideas concurrently, score every candidate using the same feature space, and persist only the winner.
 
 Every temporal feature and baseline used for a post is computed without looking beyond that post's publication time. Posts without enough prior history remain in the dataset but cannot receive a reliable relative-performance label or leaderboard rank.
 
@@ -224,6 +226,7 @@ Full request and response schemas are available in Swagger at http://localhost:8
 | `GET` | `/content?user_id={uuid}` | Return a creator's relative-performance leaderboard |
 | `GET` | `/insights?user_id={uuid}` | Return personal, trend, niche, and topic-cluster insights |
 | `POST` | `/recommend?user_id={uuid}` | Generate, score, and persist the best recommendation candidate |
+| `GET` | `/recommendations?user_id={uuid}` | Return the user's recommendation history, newest first |
 | `POST` | `/predict?user_id={uuid}` | Score a user-authored idea without persisting it |
 | `POST` | `/recommendations/{id}/feedback` | Mark a recommendation `actioned` or `dismissed` |
 
@@ -238,26 +241,27 @@ Current screens include:
 - **Leaderboard:** relative-performance ranking for a manually entered user UUID.
 - **Insights:** personal patterns, topic performance, trends, niche comparison, and topic clusters.
 - **Daily Recommendation:** three-candidate generation behind the API, display of the selected idea and predicted score, plus feedback actions.
+- **Recommendation History:** previously generated recommendations with their predicted scores and statuses.
 - **Predict:** on-demand scoring for a creator's own idea.
 - Loading, empty, error, responsive, and dark-mode states.
 
 Run frontend checks in the running container:
 
-```powershell
+```bash
 docker compose exec frontend npm test
 docker compose exec frontend npm run build
 ```
 
 ## Testing and CI
 
-```powershell
+```bash
 docker compose exec api pytest -v
 docker compose exec frontend npm test
 ```
 
 The backend suite covers ingestion, temporal splitting, feature leakage, embeddings, clustering, insights, model scoring, leaderboard behavior, recommendation selection, LLM validation, and API error handling. GitHub Actions runs the backend suite against a clean PostgreSQL and pgvector service, applies migrations, and installs the ML dependencies. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
-The full pipeline has also been reproduced from a clean database on Windows, Fedora, and Ubuntu. All four user-facing flows (Leaderboard, Insights, Daily Recommendation with feedback, and Predict) were manually verified end to end.
+The full pipeline has also been reproduced from a clean database on Windows, Fedora, and Ubuntu. The main user-facing flows, including recommendation history and feedback, were manually verified end to end.
 
 ## Model results
 
@@ -282,6 +286,6 @@ Recommendation diversity was evaluated with live Gemini output. Moving from one 
 
 ## Scope and roadmap
 
-The current MVP does not include authentication, scheduled retraining or baseline refresh jobs, production feedback learning, OAuth, real social-platform connectors, automatic ingestion, or CSV import. Daily recommendations are generated manually through the endpoint; there is no scheduler, uniqueness rule, or recommendation-history endpoint.
+The current MVP does not include authentication, scheduled retraining or baseline refresh jobs, production feedback learning, OAuth, real social-platform connectors, automatic ingestion, or CSV import. Daily recommendations are generated manually through the endpoint. There is no scheduler or uniqueness rule for recommendations.
 
 The next product steps are scheduled baseline and retraining jobs, stronger feedback-loop learning, connector abstractions with one real platform, and continued evaluation hardening.

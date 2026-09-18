@@ -1,4 +1,4 @@
-# ContentIQ — Demo Script (10–15 min)
+# ContentIQ Demo Script (10–15 min)
 
 ## Setup (before the audience arrives)
 
@@ -15,23 +15,29 @@ docker exec -it contentiq_db psql -U contentiq -d contentiq -c "\pset pager off"
 
 Open `http://localhost:3000`.
 
-**Fallback if Gemini is unavailable or rate-limited during the demo:** set `LLM_PROVIDER=mock` in `backend/.env`, then `docker compose up -d --force-recreate api`. The recommendation flow still works fully with deterministic mock output — every other part of the demo (leaderboard, insights, predict, scoring) is unaffected either way, since only idea *generation* is mocked, not scoring.
+**Fallback if Gemini is unavailable or rate-limited during the demo:** set `LLM_PROVIDER=mock` in `backend/.env`, then run `docker compose up -d --force-recreate api`. The recommendation flow still works with deterministic mock output. The leaderboard, insights, predict, and scoring flows are unchanged because only idea generation is mocked.
 
 ## 1. Leaderboard (2 min)
-Paste a real `user_id`. Point out: ranked by performance relative to *this creator's own* baseline, not a generic average — the top post is the exact planted signal used to prove the model recovers real structure, not noise.
+Paste a real `user_id`. Point out that posts are ranked against this creator's own baseline, not a generic average. The top post reflects the planted signal used to test whether the model recovers real structure rather than noise.
 
 ## 2. Insights (3 min)
-Switch tabs. Walk through the personal pattern cards, the performance-by-topic and trend charts, "you vs. your niche," and topic clusters. Point out: fully deterministic, no LLM narration — every number is directly computed with sample-size gating so thin evidence is never shown as a strong conclusion.
+Switch to Insights and walk through the personal pattern cards, performance by topic, trend charts, "you vs. your niche," and topic clusters. Point out that these results are deterministic and do not use LLM narration. Each number is computed from the data, with sample-size checks to avoid presenting thin evidence as a strong conclusion.
 
 ## 3. Daily Recommendation (4 min)
-Click **Generate**. While it loads: "This makes up to 3 real Gemini calls — one safe/proven angle, one alternative framing, one experimental-but-grounded angle — then scores all three with the same trained classifier and keeps the winner." Point out the rationale citing a real number and the predicted score. Click **Mark actioned**; generate again and click **Dismiss**.
+Click **Generate**. While it loads, explain that the system makes up to three Gemini calls concurrently: one safe or proven angle, one alternative framing, and one experimental but grounded angle. It scores all three with the same trained classifier and keeps the winner. Point out the rationale, the real number it cites, and the predicted score.
 
-## 4. Try Your Own Idea (2 min)
-Scroll to the panel on the same page. Submit a made-up idea, show the real predicted score. Point out: identical scoring path as the daily recommendation, just skipping generation.
+Use the active recommendation controls to mark the result **Actioned**, then generate another recommendation and mark it **Dismissed**. The active recommendation remains visible until it is cleared or replaced.
 
-## 5. Dark mode + responsiveness (1 min)
-Toggle the theme, note it persists on reload. Narrow the window briefly.
+## 4. Recommendation History (1 min)
+Open **History** and show that both recommendations appear newest first with their predicted scores and statuses. Point out that feedback is retained, while older recommendations remain an accurate record of what was generated at the time.
 
-## 6. Under the hood, if time allows (2–3 min)
-- MLflow UI (`localhost:5001`) — a training run, SHAP artifact.
-- `docs/KNOWN_LIMITATIONS.md` — what's known to be unfinished and why.
+## 5. Try Your Own Idea (2 min)
+Open **Predict** and submit a made-up idea. Show the predicted score and explain that it uses the same feature and scoring path as a daily recommendation, but skips idea generation and does not save the result.
+
+## 6. Dark mode and responsiveness (1 min)
+Toggle the theme and reload to show that the preference persists. Narrow the window briefly to show the responsive layout.
+
+## 7. Under the hood, if time allows (2–3 min)
+- MLflow at `localhost:5001`: show a training run and a SHAP artifact.
+- Swagger at `localhost:8000/docs`: show the main API endpoints, including recommendation history and feedback.
+- `docs/KNOWN_LIMITATIONS.md`: explain what remains unfinished and why.
