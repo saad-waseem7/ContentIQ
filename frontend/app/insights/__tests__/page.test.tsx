@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import InsightsPage from "../page";
 import { UserProvider } from "@/lib/UserContext";
 import { ThemeProvider } from "@/lib/ThemeContext";
+import { clearApiCache } from "@/lib/api";
 
 const TEST_USER_ID = "test-user-123";
 
@@ -44,6 +45,7 @@ function mockInsightsResponse() {
 }
 
 beforeEach(() => {
+  clearApiCache();
   global.fetch = vi.fn();
 });
 
@@ -62,7 +64,7 @@ it("renders personal patterns, trend, niche comparison and clusters for a real u
   (global.fetch as any).mockResolvedValueOnce(mockInsightsResponse());
   renderWithUser();
 
-  await waitFor(() => expect(screen.getByText(/what works for you/i)).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText(/What Works For You/i)).toBeInTheDocument());
   expect(screen.getAllByText(/Transformation/i).length).toBeGreaterThan(0);
   expect(screen.getByText(/Based on 150 of your own posts/i)).toBeInTheDocument();
   expect(screen.getByText(/Performance trend/i)).toBeInTheDocument();
@@ -75,4 +77,17 @@ it("shows an error message when the request fails", async () => {
   (global.fetch as any).mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({ detail: "not built" }) });
   renderWithUser();
   await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+});
+
+it("shows an insights skeleton while loading, then real content once loaded", async () => {
+  let resolveFetch: (v: any) => void;
+  const pending = new Promise((resolve) => { resolveFetch = resolve; });
+  (global.fetch as any).mockReturnValueOnce(pending);
+
+  renderWithUser();
+  expect(screen.getByRole("status", { name: /loading insights/i })).toBeInTheDocument();
+
+  resolveFetch!(mockInsightsResponse());
+  await waitFor(() => expect(screen.getByText("What Works For You")).toBeInTheDocument());
+  expect(screen.queryByRole("status", { name: /loading insights/i })).not.toBeInTheDocument();
 });

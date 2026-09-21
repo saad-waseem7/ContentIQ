@@ -88,3 +88,23 @@ def test_user_cluster_summary_counts_correctly():
 
 def test_user_cluster_summary_empty_when_no_label_df():
     assert clustering.build_user_cluster_summary(None, ["c1"]) == []
+
+
+def test_cluster_cache_reused_when_embedding_count_unchanged(monkeypatch):
+    clustering.clear_cluster_cache()
+
+    call_count = {"n": 0}
+    embeddings_map, labels_true = _make_separated_embeddings()
+
+    def fake_load(db, niche):
+        call_count["n"] += 1
+        return embeddings_map
+
+    monkeypatch.setattr(clustering, "_load_niche_embeddings", fake_load)
+    niche_df = _make_niche_df(labels_true, {0: "carousel", 1: "text", 2: "image", 3: "short_video"})
+
+    r1, _ = clustering.load_and_compute_niche_clusters(None, "fitness", niche_df)
+    r2, _ = clustering.load_and_compute_niche_clusters(None, "fitness", niche_df)
+
+    assert call_count["n"] == 2  # DB queried both times (cheap freshness check)...
+    assert r1 is r2  # ...but the expensive KMeans result is the SAME cached object, not recomputed    

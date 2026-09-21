@@ -1,11 +1,6 @@
-"""
-Feature-izes a generated idea + a user's real current context into the exact
-vector the Week 4 classifier expects, then scores it. Reuses
-features/content_features.py, features/embeddings.py, and
-ml/data_prep.py::prepare_model_matrix directly — no feature logic duplicated.
-"""
-
 import json
+import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -18,52 +13,84 @@ from ml import config as ml_cfg
 from ml.data_prep import prepare_model_matrix
 
 MODEL_PATH = Path(__file__).resolve().parents[1] / "data" / "classifier.joblib"
-CATEGORY_LEVELS_PATH = (
-    Path(__file__).resolve().parents[1] / "data" / "category_levels.json"
-)
+CATEGORY_LEVELS_PATH = Path(__file__).resolve().parents[1] / "data" / "category_levels.json"
 
 
 class ModelArtifactsNotFoundError(Exception):
     """classifier.joblib / category_levels.json missing — run scripts/train_model.py."""
 
 
+# mtime-keyed in-memory cache — same rationale as leaderboard_service's
+# feature table cache. A recommendation call scores 3 candidates; without
+# this, that's 3 separate joblib.load() calls (deserializing the whole
+# LightGBM booster) per single Generate click. classifier.joblib only
+# changes when scripts/train_model.py reruns.
+#
+# Thread safety: LightGBM's Booster.predict/predict_proba is read-only
+# inference against an already-fitted model — no mutation happens after
+# load, so concurrent reads from multiple FastAPI threadpool threads are
+# expected to be safe. This is standard practice for serving a cached model,
+# but has not been independently stress-tested under heavy concurrent load
+# in this project — flagging as an assumption, not a proven guarantee.
+_classifier_cache: dict[str, tuple[float, object]] = {}
+_category_levels_cache: dict[str, tuple[float, dict]] = {}
+_artifact_cache_lock = threading.Lock()
+
+
+def clear_artifact_cache() -> None:
+    """Test/dev utility."""
+    with _artifact_cache_lock:
+        _classifier_cache.clear()
+        _category_levels_cache.clear()
+
+
 def load_classifier():
     if not MODEL_PATH.exists():
-        raise ModelArtifactsNotFoundError(
-            f"Classifier not found at {MODEL_PATH}. Run scripts/train_model.py first."
-        )
-    return joblib.load(MODEL_PATH)
+        raise ModelArtifactsNotFoundError(f"Classifier not found at {MODEL_PATH}. Run scripts/train_model.py first.")
+
+    key = str(MODEL_PATH.resolve())
+    mtime = MODEL_PATH.stat().st_mtime
+    with _artifact_cache_lock:
+        cached = _classifier_cache.get(key)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+
+    start = time.perf_counter()
+    model = joblib.load(MODEL_PATH)
+    print(f"[load_classifier] CACHE MISS — loaded from disk in {time.perf_counter() - start:.4f}s")
+
+    with _artifact_cache_lock:
+        _classifier_cache[key] = (mtime, model)
+    return model
 
 
 def load_category_levels() -> dict:
     if not CATEGORY_LEVELS_PATH.exists():
-        raise ModelArtifactsNotFoundError(
-            f"Category levels not found at {CATEGORY_LEVELS_PATH}. Run scripts/train_model.py first."
-        )
-    return json.loads(CATEGORY_LEVELS_PATH.read_text())
+        raise ModelArtifactsNotFoundError(f"Category levels not found at {CATEGORY_LEVELS_PATH}. Run scripts/train_model.py first.")
+
+    key = str(CATEGORY_LEVELS_PATH.resolve())
+    mtime = CATEGORY_LEVELS_PATH.stat().st_mtime
+    with _artifact_cache_lock:
+        cached = _category_levels_cache.get(key)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+
+    levels = json.loads(CATEGORY_LEVELS_PATH.read_text())
+    with _artifact_cache_lock:
+        _category_levels_cache[key] = (mtime, levels)
+    return levels
 
 
 def _follower_tier(follower_count: Optional[float]) -> str:
     if follower_count is None or pd.isna(follower_count):
         return "unknown"
-    return pd.cut(
-        [follower_count],
-        bins=feat_cfg.FOLLOWER_BUCKETS,
-        labels=feat_cfg.FOLLOWER_BUCKET_LABELS,
-        right=False,
-    )[0]
+    return pd.cut([follower_count], bins=feat_cfg.FOLLOWER_BUCKETS, labels=feat_cfg.FOLLOWER_BUCKET_LABELS, right=False)[0]
 
 
 def build_idea_feature_row(idea: dict, user_context: dict) -> pd.DataFrame:
     posted_at = user_context["planned_posted_at"]
     caption = idea["sample_caption"]
 
-    # posting_hour/posting_day_of_week: prefer the user's historically
-    # best-performing time (best_posting_hour/best_posting_weekday, set by
-    # recommendation_service._build_base_user_context) over the wall-clock
-    # moment this request happens to be made. Falls back to deriving from
-    # planned_posted_at if those keys are absent (backward compatibility
-    # with any caller that doesn't set them).
     best_hour = user_context.get("best_posting_hour")
     best_weekday = user_context.get("best_posting_weekday")
     posting_hour = best_hour if best_hour is not None else cf.posting_hour(posted_at)
@@ -102,10 +129,6 @@ def build_idea_feature_row(idea: dict, user_context: dict) -> pd.DataFrame:
 
 
 def apply_known_category_levels(X: pd.DataFrame, category_levels: dict) -> pd.DataFrame:
-    """Re-casts categorical columns to the levels fitted at TRAINING time, not
-    levels inferred from this single row — LightGBM requires identical
-    category sets between train and predict. A value not seen in training
-    becomes NaN, handled as missing, not a crash."""
     X = X.copy()
     for col, levels in category_levels.items():
         if col in X.columns:

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import HistoryPage from "../page";
 import { UserProvider } from "@/lib/UserContext";
 import UserContextSelector from "@/components/UserContextSelector";
+import { clearApiCache } from "@/lib/api";
 
 const TEST_USER_ID = "test-user-123";
 
@@ -15,6 +16,7 @@ function renderWithUser(userId = TEST_USER_ID) {
 }
 
 beforeEach(() => {
+  clearApiCache();
   global.fetch = vi.fn();
 });
 
@@ -82,4 +84,23 @@ it("refetches when the selected user changes", async () => {
   await waitFor(() => expect(screen.getByText("User A idea")).toBeInTheDocument());
   fireEvent.change(screen.getByLabelText(/viewing user/i), { target: { value: "user-b" } });
   await waitFor(() => expect(screen.getByText("User B idea")).toBeInTheDocument());
+});
+
+it("shows a history skeleton while loading, then real items once loaded", async () => {
+  let resolveFetch: (v: any) => void;
+  const pending = new Promise((resolve) => { resolveFetch = resolve; });
+  (global.fetch as any).mockReturnValueOnce(pending);
+
+  renderWithUser();
+  expect(screen.getByRole("status", { name: /loading recommendation history/i })).toBeInTheDocument();
+
+  resolveFetch!({
+    ok: true,
+    json: async () => ({ user_id: TEST_USER_ID, count: 1, recommendations: [
+      { id: "r1", idea_text: "Loaded idea", format: "carousel", best_time: null, rationale: "r", predicted_score: 0.5, status: "proposed", created_at: "2026-01-01T00:00:00Z" },
+    ]}),
+  });
+
+  await waitFor(() => expect(screen.getByText("Loaded idea")).toBeInTheDocument());
+  expect(screen.queryByRole("status", { name: /loading recommendation history/i })).not.toBeInTheDocument();
 });

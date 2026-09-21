@@ -1,5 +1,7 @@
 import sys
 from pathlib import Path
+import joblib
+from ml import idea_scoring
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -37,6 +39,9 @@ USER_CONTEXT = {
     "planned_posted_at": datetime(2026, 1, 1, 19, 0, tzinfo=timezone.utc),
 }
 
+class _DummyClassifierForCacheTest:
+    def predict_proba(self, X):
+        return [[0.5, 0.5]]
 
 def test_feature_row_has_all_required_columns():
     df = build_idea_feature_row(IDEA, USER_CONTEXT)
@@ -93,3 +98,14 @@ def test_build_idea_feature_row_is_weekend_derived_from_best_weekday():
     ctx["best_posting_weekday"] = 6  # Sunday
     df = build_idea_feature_row(IDEA, ctx)
     assert df["is_weekend"].iloc[0] == 1
+
+
+def test_load_classifier_uses_cache_on_second_call(tmp_path, monkeypatch):
+    idea_scoring.clear_artifact_cache()
+
+    joblib.dump(_DummyClassifierForCacheTest(), tmp_path / "classifier.joblib")
+    monkeypatch.setattr(idea_scoring, "MODEL_PATH", tmp_path / "classifier.joblib")
+
+    m1 = idea_scoring.load_classifier()
+    m2 = idea_scoring.load_classifier()
+    assert m1 is m2

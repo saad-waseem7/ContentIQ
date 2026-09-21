@@ -1,6 +1,3 @@
-// Types mirror backend/app/schemas.py exactly — verified against the actual
-// Pydantic models, not assumed from endpoint names.
-
 export interface LeaderboardEntry {
   rank: number;
   content_id: string;
@@ -33,12 +30,10 @@ export interface RecommendationResponse {
   created_at: string;
 }
 
-export class ApiError extends Error {
-  status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
+export interface RecommendationHistoryResponse {
+  user_id: string;
+  count: number;
+  recommendations: RecommendationResponse[];
 }
 
 export interface DimensionEntry {
@@ -113,9 +108,18 @@ export interface InsightsResponse {
   topic_clusters: TopicClusters;
 }
 
-export async function getInsights(userId: string): Promise<InsightsResponse> {
-  const res = await fetch(`${BASE_URL}/insights?user_id=${encodeURIComponent(userId)}`);
-  return handle<InsightsResponse>(res);
+export interface PredictRequest {
+  hook_type: string; content_type: string; platform: string;
+  primary_topic_tag: string; duration_sec?: number | null; sample_caption: string;
+}
+export interface PredictResponse { predicted_score: number; }
+
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
 }
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
@@ -134,50 +138,105 @@ async function handle<T>(res: Response): Promise<T> {
   return res.json();
 }
 
+// --- Simple in-memory GET cache + in-flight request dedupe ---
+// Deliberately NOT a library (SWR/react-query) — a plain Map, per the
+// explicit instruction to keep this minimal. Two jobs:
+//   1. Avoid re-fetching identical data on route navigation within a short
+//      TTL (e.g. bouncing Leaderboard -> Insights -> Leaderboard).
+//   2. Dedupe genuinely-simultaneous requests to the same URL into one
+//      network call.
+// Cache keys are the full request URL, which already includes user_id as
+// a query param — this means cross-user leakage is structurally
+// impossible: two different users are two different cache keys by
+// construction, not by extra logic that could be gotten wrong.
+// TTL is short (30s) rather than infinite, so any change made outside the
+// tracked mutation paths (e.g. re-running scripts/build_features.py while
+// the app is open) still surfaces within a bounded time. Mutating actions
+// (generate recommendation, feedback) explicitly invalidate the relevant
+// prefix immediately rather than waiting on the TTL.
+const CACHE_TTL_MS = 30_000;
+const _requestCache = new Map<string, { timestamp: number; data: unknown }>();
+const _inFlight = new Map<string, Promise<unknown>>();
+
+export function invalidateCache(prefix: string): void {
+  for (const key of _requestCache.keys()) {
+    if (key.startsWith(prefix)) _requestCache.delete(key);
+  }
+  for (const key of _inFlight.keys()) {
+    if (key.startsWith(prefix)) _inFlight.delete(key);
+  }
+}
+
+// Test-only utility — clears everything, used in beforeEach to keep tests
+// isolated from each other (see test-file changes below).
+export function clearApiCache(): void {
+  _requestCache.clear();
+  _inFlight.clear();
+}
+
+async function cachedGet<T>(url: string): Promise<T> {
+  const cached = _requestCache.get(url);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data as T;
+  }
+
+  const inFlight = _inFlight.get(url);
+  if (inFlight) return inFlight as Promise<T>;
+
+  const promise = fetch(url)
+    .then((res) => handle<T>(res))
+    .then((data) => {
+      _requestCache.set(url, { timestamp: Date.now(), data });
+      _inFlight.delete(url);
+      return data;
+    })
+    .catch((err) => {
+      _inFlight.delete(url);
+      throw err;
+    });
+
+  _inFlight.set(url, promise);
+  return promise as Promise<T>;
+}
+
 export async function getLeaderboard(userId: string): Promise<LeaderboardResponse> {
-  const res = await fetch(`${BASE_URL}/content?user_id=${encodeURIComponent(userId)}`);
-  return handle<LeaderboardResponse>(res);
+  return cachedGet<LeaderboardResponse>(`${BASE_URL}/content?user_id=${encodeURIComponent(userId)}`);
+}
+
+export async function getInsights(userId: string): Promise<InsightsResponse> {
+  return cachedGet<InsightsResponse>(`${BASE_URL}/insights?user_id=${encodeURIComponent(userId)}`);
+}
+
+export async function getRecommendationHistory(userId: string): Promise<RecommendationHistoryResponse> {
+  return cachedGet<RecommendationHistoryResponse>(`${BASE_URL}/recommendations?user_id=${encodeURIComponent(userId)}`);
 }
 
 export async function generateRecommendation(userId: string): Promise<RecommendationResponse> {
-  const res = await fetch(`${BASE_URL}/recommend?user_id=${encodeURIComponent(userId)}`, {
-    method: "POST",
-  });
-  return handle<RecommendationResponse>(res);
+  const res = await fetch(`${BASE_URL}/recommend?user_id=${encodeURIComponent(userId)}`, { method: "POST" });
+  const data = await handle<RecommendationResponse>(res);
+  // A new recommendation changes this user's history — invalidate so the
+  // next History visit reflects it instead of showing stale cached data.
+  invalidateCache(`${BASE_URL}/recommendations?user_id=${encodeURIComponent(userId)}`);
+  return data;
 }
 
-export async function submitFeedback(
-  recommendationId: string,
-  status: "actioned" | "dismissed"
-): Promise<RecommendationResponse> {
+export async function submitFeedback(recommendationId: string, status: "actioned" | "dismissed"): Promise<RecommendationResponse> {
   const res = await fetch(`${BASE_URL}/recommendations/${recommendationId}/feedback`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
   });
-  return handle<RecommendationResponse>(res);
+  const data = await handle<RecommendationResponse>(res);
+  // Status changed — invalidate ALL cached history entries (we don't know
+  // which user this recommendation belongs to from here without another
+  // call, and this is cheap/safe to do broadly).
+  invalidateCache(`${BASE_URL}/recommendations?`);
+  return data;
 }
-
-export interface PredictRequest {
-  hook_type: string; content_type: string; platform: string;
-  primary_topic_tag: string; duration_sec?: number | null; sample_caption: string;
-}
-export interface PredictResponse { predicted_score: number; }
 
 export async function predictIdea(userId: string, payload: PredictRequest): Promise<PredictResponse> {
   const res = await fetch(`${BASE_URL}/predict?user_id=${encodeURIComponent(userId)}`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
   });
   return handle<PredictResponse>(res);
-}
-
-export interface RecommendationHistoryResponse {
-  user_id: string;
-  count: number;
-  recommendations: RecommendationResponse[];
-}
-
-export async function getRecommendationHistory(userId: string): Promise<RecommendationHistoryResponse> {
-  const res = await fetch(`${BASE_URL}/recommendations?user_id=${encodeURIComponent(userId)}`);
-  return handle<RecommendationHistoryResponse>(res);
 }

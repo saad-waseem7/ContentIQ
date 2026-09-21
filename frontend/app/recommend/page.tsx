@@ -4,9 +4,10 @@ import { useState } from "react";
 import { generateRecommendation, submitFeedback, ApiError } from "@/lib/api";
 import { useUserId } from "@/lib/UserContext";
 import { useActiveRecommendation } from "@/lib/RecommendationContext";
-import { LoadingMessage, ErrorMessage, EmptyMessage, messageForStatus } from "@/components/StatusMessage";
+import { ErrorMessage, EmptyMessage, messageForStatus } from "@/components/StatusMessage";
 import PageHeader from "@/components/PageHeader";
 import RecommendationCard from "@/components/RecommendationCard";
+import RecommendationCardSkeleton from "@/components/skeletons/RecommendationCardSkeleton";
 import TryYourIdeaPanel from "@/components/TryYourIdeaPanel";
 
 export default function RecommendPage() {
@@ -51,7 +52,13 @@ export default function RecommendPage() {
           >
             {loading ? "Generating..." : "Generate Recommendation"}
           </button>
-          {loading && <LoadingMessage text="Generating Recommendation..." />}
+
+          {loading && (
+            <div className="mb-8">
+              <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">Generating Recommendation…</p>
+              <RecommendationCardSkeleton />
+            </div>
+          )}
           {!loading && error && <ErrorMessage text={error} />}
           {!loading && !error && !activeRecommendation && <EmptyMessage text="Click Generate to get today's recommendation." />}
           {!loading && activeRecommendation && (

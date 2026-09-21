@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import LeaderboardPage from "../page";
 import { UserProvider } from "@/lib/UserContext";
 import UserContextSelector from "@/components/UserContextSelector";
+import { clearApiCache } from "@/lib/api";
 
 const TEST_USER_ID = "test-user-123";
 
@@ -15,6 +16,7 @@ function renderWithUser(userId = TEST_USER_ID) {
 }
 
 beforeEach(() => {
+  clearApiCache();
   global.fetch = vi.fn();
 });
 
@@ -92,4 +94,23 @@ it("re-fetches the leaderboard when the selected user changes", async () => {
 
   await waitFor(() => expect(screen.getByText("Long Video")).toBeInTheDocument());
   expect((global.fetch as any).mock.calls[1][0]).toContain("user_id=user-b");
+});
+
+it("shows a leaderboard skeleton while loading, then the real table once loaded", async () => {
+  let resolveFetch: (v: any) => void;
+  const pending = new Promise((resolve) => { resolveFetch = resolve; });
+  (global.fetch as any).mockReturnValueOnce(pending);
+
+  renderWithUser();
+  expect(screen.getByRole("status", { name: /loading leaderboard/i })).toBeInTheDocument();
+
+  resolveFetch!({
+    ok: true,
+    json: async () => ({ user_id: TEST_USER_ID, niche: "fitness", total_posts_in_history: 1, ranked_posts: 1,
+      leaderboard: [{ rank: 1, content_id: "c1", platform: "instagram", content_type: "carousel", hook_type: "story",
+        topic_tags: ["transformation"], posted_at: "2026-01-01T00:00:00Z", performance_raw: 0.05, performance_z: 2.1, is_top_performer: true }] }),
+  });
+
+  await waitFor(() => expect(screen.getByText("Carousel")).toBeInTheDocument());
+  expect(screen.queryByRole("status", { name: /loading leaderboard/i })).not.toBeInTheDocument();
 });

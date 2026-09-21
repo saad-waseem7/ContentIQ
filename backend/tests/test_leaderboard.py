@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 import pytest
+import time
 from fastapi.testclient import TestClient
 
 from app import leaderboard_service
@@ -146,3 +147,26 @@ def test_endpoint_503_when_feature_file_missing(tmp_path, monkeypatch):
     client = TestClient(app)
     resp = client.get(f"/content?user_id={uuid.uuid4()}")
     assert resp.status_code == 503
+
+
+def test_load_feature_table_uses_cache_on_second_call(tmp_path, monkeypatch):
+    leaderboard_service.clear_feature_table_cache()
+    rows = [_make_row("u1", "c1", performance_z=1.0)]
+    path = _write_parquet(tmp_path, rows)
+    monkeypatch.setattr(leaderboard_service, "FEATURES_PATH", path)
+
+    df1 = leaderboard_service.load_feature_table(path)
+    df2 = leaderboard_service.load_feature_table(path)
+    assert df1 is df2  # same object returned — proves the second call didn't re-read the file
+
+
+def test_load_feature_table_reloads_after_file_changes(tmp_path, monkeypatch):
+    leaderboard_service.clear_feature_table_cache()
+    path = _write_parquet(tmp_path, [_make_row("u1", "c1", performance_z=1.0)])
+    df1 = leaderboard_service.load_feature_table(path)
+
+    time.sleep(0.01)
+    path2 = _write_parquet(tmp_path, [_make_row("u1", "c1", performance_z=1.0), _make_row("u1", "c2", performance_z=2.0)])
+    df2 = leaderboard_service.load_feature_table(path2)
+    assert len(df2) == 2
+    assert df1 is not df2

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import RecommendPage from "../page";
 import { UserProvider } from "@/lib/UserContext";
 import { RecommendationProvider } from "@/lib/RecommendationContext";
+import { clearApiCache } from "@/lib/api";
 
 const TEST_USER_ID = "test-user-123";
 const REC_ID = "rec-abc";
@@ -29,6 +30,7 @@ function mockRecommendationResponse(status = "proposed") {
 }
 
 beforeEach(() => {
+  clearApiCache();
   global.fetch = vi.fn();
 });
 
@@ -98,4 +100,19 @@ it("recommendation persists after simulated navigation away and back (same provi
   // outside any single page) does not — this test proves state survives
   // that specific pattern rather than merely persisting within one render.
   unmount();
+});
+
+it("shows a recommendation card skeleton while generating, then the real card", async () => {
+  let resolveFetch: (v: any) => void;
+  const pending = new Promise((resolve) => { resolveFetch = resolve; });
+  (global.fetch as any).mockReturnValueOnce(pending);
+
+  renderPage();
+  fireEvent.click(screen.getByRole("button", { name: /generate recommendation/i }));
+  expect(screen.getByRole("status", { name: /generating recommendation/i })).toBeInTheDocument();
+  expect(screen.getByText(/generating recommendation…/i)).toBeInTheDocument();
+
+  resolveFetch!(mockRecommendationResponse("proposed"));
+  await waitFor(() => expect(screen.getByText(/Test idea text/i)).toBeInTheDocument());
+  expect(screen.queryByRole("status", { name: /generating recommendation/i })).not.toBeInTheDocument();
 });

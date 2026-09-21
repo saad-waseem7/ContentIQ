@@ -63,7 +63,8 @@ export function describePerformance(z: number, n: number): {
 // the raw string unchanged if the format doesn't match, so malformed or
 // future formats never crash or show "undefined".
 export function formatIdeaText(ideaText: string): string {
-  const match = ideaText.match(/^\[(.+?)\s*\/\s*(.+?)\s*\/\s*(.+?)\]\s*(.*)$/s);
+
+  const match = ideaText.match(/^\[(.+?)\s*\/\s*(.+?)\s*\/\s*(.+?)\]\s*([\s\S]*)$/);
   if (!match) return ideaText;
 
   const [, rawContentType, rawHookBlock, rawTopic, caption] = match;

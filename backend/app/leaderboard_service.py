@@ -1,3 +1,5 @@
+import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -14,6 +16,25 @@ class UnknownUserError(Exception):
     """user_id has no rows in the feature table."""
 
 
+# In-memory cache, keyed by resolved file path, invalidated by mtime — not a
+# TTL. features.parquet only changes when scripts/build_features.py is
+# rerun, which changes its mtime; any other time it's read, the file is
+# byte-identical, so re-parsing it is pure waste. Keying by path (not a
+# single global variable) means tests that monkeypatch FEATURES_PATH to a
+# unique tmp_path per test get their own cache entry, never colliding with
+# the real data or with each other. Lock guards concurrent FastAPI
+# threadpool requests from racing on the dict.
+_feature_table_cache: dict[str, tuple[float, pd.DataFrame]] = {}
+_feature_table_cache_lock = threading.Lock()
+
+
+def clear_feature_table_cache() -> None:
+    """Test/dev utility — not required by any current test, but available
+    if a test ever needs to force a cold reload."""
+    with _feature_table_cache_lock:
+        _feature_table_cache.clear()
+
+
 def load_feature_table(features_path: Optional[Path] = None) -> pd.DataFrame:
     # Resolved at call time, not bind time — required so tests can monkeypatch
     # FEATURES_PATH and have it actually take effect on the next call.
@@ -22,7 +43,23 @@ def load_feature_table(features_path: Optional[Path] = None) -> pd.DataFrame:
         raise FeatureDataNotBuiltError(
             f"Feature table not found at {path}. Run scripts/build_features.py first."
         )
-    return pd.read_parquet(path)
+
+    key = str(path.resolve())
+    mtime = path.stat().st_mtime
+
+    with _feature_table_cache_lock:
+        cached = _feature_table_cache.get(key)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+
+    start = time.perf_counter()
+    df = pd.read_parquet(path)
+    elapsed = time.perf_counter() - start
+    print(f"[load_feature_table] CACHE MISS — read {len(df)} rows from disk in {elapsed:.4f}s")
+
+    with _feature_table_cache_lock:
+        _feature_table_cache[key] = (mtime, df)
+    return df
 
 
 def get_user_feature_rows(user_id: str, features_path: Optional[Path] = None) -> pd.DataFrame:
@@ -41,16 +78,10 @@ def build_leaderboard(user_id: str, features_path: Optional[Path] = None) -> dic
 
     total_posts_in_history = len(user_df)
 
-    # Rows with no prior group history (first ~2 posts per user/platform/content_type,
-    # per builder.py's MIN_GROUP_SIZE_FOR_ZSCORE) have no valid performance_z/label —
-    # excluded from ranking rather than shown with a fabricated score.
     ranked_df = user_df[user_df["has_sufficient_group_history"]].copy()
     ranked_df = ranked_df.sort_values("performance_z", ascending=False).reset_index(drop=True)
     ranked_df["rank"] = ranked_df.index + 1
 
-    # Safe: niche is a column on users, one row per user — verified against
-    # models.py, not assumed. Every content row reaches niche via a single
-    # unambiguous join path (content -> channel -> user), so this can't diverge.
     niche = user_df["niche"].iloc[0]
 
     leaderboard = [

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { getRecommendationHistory, RecommendationHistoryResponse, ApiError } from "@/lib/api";
 import { useUserId } from "@/lib/UserContext";
-import { LoadingMessage, EmptyMessage, ErrorMessage, messageForStatus } from "@/components/StatusMessage";
+import { EmptyMessage, ErrorMessage, messageForStatus } from "@/components/StatusMessage";
+import HistoryListSkeleton from "@/components/skeletons/HistoryListSkeleton";
 import PageHeader from "@/components/PageHeader";
 import Card from "@/components/Card";
 import { formatDate, formatIdeaText } from "@/lib/labels";
@@ -44,7 +45,7 @@ export default function HistoryPage() {
       <PageHeader title="Recommendation History" subtitle="Previously generated recommendations for this creator." />
 
       {!userId && <EmptyMessage text="Enter a user ID above to see their recommendation history." />}
-      {userId && loading && <LoadingMessage text="Loading history..." />}
+      {userId && loading && <HistoryListSkeleton />}
       {userId && !loading && error && <ErrorMessage text={error} />}
       {userId && !loading && !error && data && data.count === 0 && (
         <EmptyMessage text="No recommendations generated yet for this user." />

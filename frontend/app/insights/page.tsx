@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getInsights, InsightsResponse, DimensionEntry, ApiError } from "@/lib/api";
 import { useUserId } from "@/lib/UserContext";
-import { LoadingMessage, EmptyMessage, ErrorMessage, messageForStatus } from "@/components/StatusMessage";
+import { EmptyMessage, ErrorMessage, messageForStatus } from "@/components/StatusMessage";
 import DimensionList from "@/components/DimensionList";
 import Card from "@/components/Card";
 import StatCard from "@/components/StatCard";
@@ -11,6 +11,7 @@ import InfoTooltip from "@/components/InfoTooltip";
 import TrendChart from "@/components/TrendChart";
 import TopicBarChart from "@/components/TopicBarChart";
 import PageHeader from "@/components/PageHeader";
+import InsightsPageSkeleton from "@/components/skeletons/InsightsPageSkeleton";
 import { label as humanLabel, describePerformance, signed } from "@/lib/labels";
 
 function Section({ title, subtitle, action, children }: { title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode }) {
@@ -76,7 +77,7 @@ export default function InsightsPage() {
         helper={helper}
       />
 
-      {loading && <LoadingMessage text="Analyzing Performance Patterns..." />}
+      {loading && <InsightsPageSkeleton />}
       {!loading && error && <ErrorMessage text={error} />}
       {!loading && !error && data && (
         <>
@@ -85,7 +86,7 @@ export default function InsightsPage() {
             const topTime = topEntry(data.personal_patterns.dimensions.posting_time_window);
             const topTopic = topEntry(data.personal_patterns.dimensions.topic);
             const topHook = topEntry(data.personal_patterns.dimensions.hook_type);
-            const total = data.personal_patterns.total_posts_analyzed;
+            const total = data.personal_patterns.total_posts_analyzed;         
 
             return (
               <>
@@ -110,7 +111,7 @@ export default function InsightsPage() {
                 </Section>
 
                 {data.personal_patterns.dimensions.topic.length > 0 && (
-                  <Section title="Performance by Topic" subtitle="How your average performance compares across topics you've covered">
+                  <Section title="Performance By Topic" subtitle="How your average performance compares across topics you've covered">
                     <TopicBarChart entries={data.personal_patterns.dimensions.topic} />
                   </Section>
                 )}
@@ -123,7 +124,7 @@ export default function InsightsPage() {
                       data.trend.direction === "improving" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" :
                       data.trend.direction === "declining" ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" :
                       "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}>
-                      {data.trend.direction === "improving" ? "Trending Up" : data.trend.direction === "declining" ? "Trending down" : "Stable"}
+                      {data.trend.direction === "improving" ? "Trending up" : data.trend.direction === "declining" ? "Trending down" : "Stable"}
                     </span>
                   )}
                 >

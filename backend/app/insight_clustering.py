@@ -14,6 +14,7 @@ Deliberately NOT using an LLM to label clusters — each cluster is
 described by its own deterministic majority content_type/hook_type/topic,
 computed from the same rows that were clustered.
 """
+import threading
 from collections import Counter
 from typing import Optional
 
@@ -26,6 +27,22 @@ from sqlalchemy.orm import Session
 
 from app import insight_config as cfg
 from app import models
+
+# Cached by niche, invalidated by embedding COUNT, not a file mtime — this
+# data comes from Postgres, not a file. A changed count means new content
+# was ingested/embedded for this niche since the cache entry was built.
+# The DB query for the count is cheap; what's expensive and worth caching
+# is the KMeans sweep itself (up to 4 k-values x n_init=10 = up to 40 fits),
+# which otherwise reruns on every single /insights page load for every
+# user in the niche.
+_cluster_cache: dict[str, tuple[int, dict, Optional[pd.DataFrame]]] = {}
+_cluster_cache_lock = threading.Lock()
+
+
+def clear_cluster_cache() -> None:
+    """Test/dev utility."""
+    with _cluster_cache_lock:
+        _cluster_cache.clear()
 
 
 def _load_niche_embeddings(db: Session, niche: str) -> dict:
@@ -61,9 +78,8 @@ def _dominant_value(series: pd.Series) -> str:
 
 
 def compute_niche_clusters(embeddings_map: dict, niche_df_valid_with_topic: pd.DataFrame) -> tuple[dict, Optional[pd.DataFrame]]:
-    """Pure function — no DB access. embeddings_map: {content_id: vector}.
-    niche_df_valid_with_topic must already have primary_topic_tag added and
-    be filtered to valid (has_sufficient_group_history, non-null performance_z) rows."""
+    """Pure function — no DB access, no caching. Unchanged, still directly
+    unit-tested in test_insight_clustering.py."""
     if len(embeddings_map) < cfg.CLUSTER_MIN_NICHE_POSTS:
         return {"available": False, "reason_unavailable": "Not enough content in this niche to cluster reliably."}, None
 
@@ -105,7 +121,18 @@ def compute_niche_clusters(embeddings_map: dict, niche_df_valid_with_topic: pd.D
 
 def load_and_compute_niche_clusters(db: Session, niche: str, niche_df_valid_with_topic: pd.DataFrame):
     embeddings_map = _load_niche_embeddings(db, niche)
-    return compute_niche_clusters(embeddings_map, niche_df_valid_with_topic)
+    embedding_count = len(embeddings_map)
+
+    with _cluster_cache_lock:
+        cached = _cluster_cache.get(niche)
+        if cached is not None and cached[0] == embedding_count:
+            return cached[1], cached[2]
+
+    result, label_df = compute_niche_clusters(embeddings_map, niche_df_valid_with_topic)
+
+    with _cluster_cache_lock:
+        _cluster_cache[niche] = (embedding_count, result, label_df)
+    return result, label_df
 
 
 def build_user_cluster_summary(label_df: Optional[pd.DataFrame], user_content_ids: list) -> list[dict]:
