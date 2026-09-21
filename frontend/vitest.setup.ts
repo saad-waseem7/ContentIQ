@@ -1,4 +1,6 @@
 import "@testing-library/jest-dom";
+import { beforeEach } from "vitest";
+import { clearApiCache } from "@/lib/api";
 
 class ResizeObserverStub {
   observe() {}
@@ -7,3 +9,7 @@ class ResizeObserverStub {
 }
 
 global.ResizeObserver = ResizeObserverStub as any;
+
+beforeEach(() => {
+  clearApiCache();
+});

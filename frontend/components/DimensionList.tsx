@@ -21,7 +21,7 @@ export default function DimensionList({ title, dimension, entries }: { title: st
                   <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{humanLabel(dimension, e.value)}</span>
                   {e.is_standout && (
                     <span className="text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 px-1.5 py-0.5 rounded-full">
-                      standout
+                      Standout
                     </span>
                   )}
                 </div>
