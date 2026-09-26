@@ -6,6 +6,7 @@ import { useUserId } from "@/lib/UserContext";
 import { EmptyMessage, ErrorMessage, messageForStatus } from "@/components/StatusMessage";
 import LeaderboardTable from "@/components/LeaderboardTable";
 import LeaderboardTableSkeleton from "@/components/skeletons/LeaderboardTableSkeleton";
+import PageHeader from "@/components/PageHeader";
 import { label as humanLabel } from "@/lib/labels";
 
 export default function LeaderboardPage() {
@@ -30,8 +31,7 @@ export default function LeaderboardPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-1">Content Performance Leaderboard</h1>
-      <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Ranked by performance relative to this creator's own baseline.</p>
+      <PageHeader title="Content Performance Leaderboard" subtitle="Ranked by performance relative to this creator's own baseline." />
 
       {!userId && <EmptyMessage text="Enter a user ID above to see their leaderboard." />}
       {userId && loading && <LeaderboardTableSkeleton />}
