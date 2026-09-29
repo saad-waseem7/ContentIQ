@@ -5,10 +5,6 @@ from typing import Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 from app.models import PLATFORMS, CONTENT_TYPES, HOOK_TYPES
 
-PLATFORMS = {"youtube", "youtube_shorts", "instagram", "tiktok", "x", "linkedin"}
-CONTENT_TYPES = {"short_video", "long_video", "image", "carousel", "text"}
-HOOK_TYPES = {"question", "bold_claim", "listicle", "story", "none"}
-
 
 class UserIngest(BaseModel):
     id: Optional[uuid.UUID] = None
