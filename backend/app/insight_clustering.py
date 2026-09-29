@@ -40,7 +40,7 @@ _cluster_cache_lock = threading.Lock()
 
 
 def clear_cluster_cache() -> None:
-    """Test/dev utility."""
+    """Clear cached clusters so tests can exercise a fresh computation."""
     with _cluster_cache_lock:
         _cluster_cache.clear()
 
@@ -78,8 +78,7 @@ def _dominant_value(series: pd.Series) -> str:
 
 
 def compute_niche_clusters(embeddings_map: dict, niche_df_valid_with_topic: pd.DataFrame) -> tuple[dict, Optional[pd.DataFrame]]:
-    """Pure function — no DB access, no caching. Unchanged, still directly
-    unit-tested in test_insight_clustering.py."""
+    """Cluster supplied embeddings without database access or caching."""
     if len(embeddings_map) < cfg.CLUSTER_MIN_NICHE_POSTS:
         return {"available": False, "reason_unavailable": "Not enough content in this niche to cluster reliably."}, None
 

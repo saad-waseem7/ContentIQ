@@ -1,34 +1,9 @@
-"""
-Orchestrates: grounding retrieval -> LLM idea generation -> feature-ization
--> classifier scoring -> best-candidate selection -> persistence. Reuses
-leaderboard_service (grounding), llm.coach (generation), ml.idea_scoring
-(scoring, called once per candidate) — unchanged. Only the winning
-candidate is persisted; losing candidates are scored, compared, then
-discarded.
+"""Generate grounded ideas, score them with the trained model, and persist the winner.
 
-Posting-time semantics (fixed after the recommendation-score-variation
-investigation): a recommendation's posting_hour/posting_day_of_week
-features are derived from this user's own historically best-performing
-posting time (mode across their real winning posts), NOT from the
-wall-clock moment the request happens to be made. Previously, using
-datetime.now() meant identical ideas could score anywhere from ~44% to
-~91% purely based on what second the Generate button was clicked, since
-posting_hour is the model's single strongest feature by a wide margin
-(confirmed via SHAP). Anchoring on the user's real best-performing time
-instead answers the question a "predicted score" should actually answer:
-"how would this idea likely perform if posted well for this creator,"
-not "how would it perform if posted this exact instant."
-
-The LLM's own best_posting_window text field is intentionally NOT
-parsed/used here — it remains a display-only string. Parsing free-form
-LLM text into a reliable hour/weekday would be fragile (observed formats
-vary: "Tuesday 7-9pm", "6:00 PM - 8:00 PM", "18:00-20:00 EST") and less
-robust than deriving the value deterministically from real historical
-data already loaded for grounding.
-
-days_since_last_post is NOT affected by this change — it correctly still
-anchors on the real current time, since "how long since this user's last
-post" is genuinely about today, not about a hypothetical best posting time.
+Scoring uses the user's historically best-performing posting time so an
+idea's score does not depend on when the request was made. The LLM's
+free-form best_posting_window remains display-only; days_since_last_post
+still uses the current time because it describes actual posting recency.
 """
 import uuid
 from datetime import datetime, timezone
@@ -74,13 +49,10 @@ def _get_content_embeddings(db: Session, content_ids: list) -> dict:
 
 
 def _compute_best_posting_time(winners_df: pd.DataFrame, fallback_hour: int, fallback_weekday: int) -> tuple[int, int]:
-    """This user's own historically best-performing posting hour/weekday,
-    derived as the mode across their real winning posts. Falls back to the
-    given (current-time-derived) values if winners_df lacks usable
-    posting_hour/posting_day_of_week data — including the columns being
-    entirely absent, not just containing NaN — handling malformed/missing
-    data safely rather than raising. pandas .mode() returns ties sorted
-    ascending, so the tie-break (lowest value) is deterministic."""
+    """Use the mode across winning posts, falling back when columns or values are missing.
+
+    pandas sorts tied modes ascending, so the lowest value wins consistently.
+    """
     required_cols = {"posting_hour", "posting_day_of_week"}
     if not required_cols.issubset(winners_df.columns):
         return fallback_hour, fallback_weekday
@@ -128,10 +100,7 @@ def _build_base_user_context(db, user_df, winners_df) -> dict:
 
 
 def _complete_context_for_idea(base_context: dict, idea: dict, caption_embedding: np.ndarray) -> dict:
-    """Fields that DO depend on the specific candidate idea — content_type_share_recent
-    and similarity_to_prior_winners both vary per candidate. Formulas identical to
-    before — only WHEN posting_hour/day are computed changed (see module docstring),
-    not this function."""
+    """Add features that vary by candidate; shared user context is built once per request."""
     recent_window = base_context["_recent_window_df"]
     content_type_share_recent = float((recent_window["content_type"] == idea["content_type"]).mean())
 
@@ -152,7 +121,7 @@ def _format_idea_text(idea: dict) -> str:
 
 
 def _select_best_candidate(scored_candidates: list[tuple[dict, float]]) -> tuple[dict, float]:
-    """Pure, directly unit-testable — no DB/LLM/model dependency."""
+    """Select the highest-scoring candidate independently of persistence."""
     return max(scored_candidates, key=lambda pair: pair[1])
 
 

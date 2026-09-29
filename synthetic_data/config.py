@@ -53,7 +53,7 @@ BOOST_HOURS = range(17, 21)  # 5pm-9pm
 TIME_BOOST_MULTIPLIER = 1.8  # was 2.5 — lower per-post boost, but now hits ~8x more posts
 
 # The hidden planted signal: (niche, hook_type, topic_tag) -> multiplier
-# Documented per Checkpoint 9 design
+# Used to verify that training recovers known niche-specific performance patterns.
 PLANTED_SIGNAL = {
     "fitness": {"hook_type": "story", "topic_tag": "transformation", "multiplier": 5.0},
     "food": {"hook_type": "listicle", "topic_tag": "quick_recipes", "multiplier": 5.0},

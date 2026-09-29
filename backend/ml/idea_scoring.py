@@ -38,7 +38,7 @@ _artifact_cache_lock = threading.Lock()
 
 
 def clear_artifact_cache() -> None:
-    """Test/dev utility."""
+    """Clear cached model artifacts between tests."""
     with _artifact_cache_lock:
         _classifier_cache.clear()
         _category_levels_cache.clear()
@@ -132,6 +132,7 @@ def apply_known_category_levels(X: pd.DataFrame, category_levels: dict) -> pd.Da
     X = X.copy()
     for col, levels in category_levels.items():
         if col in X.columns:
+            # Keep training category codes; unseen values become missing for the model.
             X[col] = pd.Categorical(X[col], categories=levels)
     return X
 

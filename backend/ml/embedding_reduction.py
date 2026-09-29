@@ -1,10 +1,7 @@
-"""
-PCA reduction for caption embeddings (Week 5: "~32 dims to avoid
-dominating tree splits"). Fit only on rows with a real embedding drawn from
-the TRAIN split; content rows with no embedding (2 of ~2728, per Checkpoint 15
-— manual test payloads with no caption) get NaN across all pca_* columns
-rather than being dropped or imputed, matching how every other missing
-numeric feature is already handled in this pipeline.
+"""Reduce caption embeddings with PCA fitted only on training rows.
+
+Rows without embeddings remain NaN so they stay in the dataset and use the
+same missing-value handling as other numeric features.
 """
 
 import numpy as np
@@ -14,10 +11,7 @@ from sklearn.decomposition import PCA
 def fit_pca(
     content_ids: list, embeddings_map: dict, n_components: int, random_state: int = 42
 ) -> PCA:
-    """Fit PCA using ONLY the given content_ids' embeddings. Caller MUST pass
-    train-split content_ids only (see scripts/train_model.py) — this function
-    has no awareness of train/test itself, the caller's discipline is what
-    guarantees no leakage."""
+    """Fit PCA on the supplied IDs; callers must pass training IDs only to avoid leakage."""
     vectors = [embeddings_map[cid] for cid in content_ids if cid in embeddings_map]
     if not vectors:
         raise ValueError(

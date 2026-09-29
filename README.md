@@ -1,6 +1,6 @@
 # ContentIQ
 
-**A personalized content performance coach.** ContentIQ learns what works for an individual creator instead of applying generic best practices. It models each post against that creator's own historical baseline, then uses that model to generate, rank, and score new content ideas.
+**A personalized content performance coach.** ContentIQ learns what works for each creator by comparing posts with that creator's own history, then uses the resulting model to generate, rank, and score new content ideas.
 
 The project is built end to end: synthetic data generation, leakage-safe feature engineering, ML training with SHAP-based interpretability, LLM-grounded recommendations, an Insight Engine, and a full-stack web application running in containers.
 
@@ -8,10 +8,10 @@ The project is built end to end: synthetic data generation, leakage-safe feature
 
 - **Content Performance Leaderboard:** ranks posts relative to the creator's own baseline within platform and content type.
 - **Insights:** shows personal patterns across content type, hook, topic, and posting time; non-causal trends; niche-population comparisons; and niche-scoped topic clusters built with KMeans over caption embeddings.
-- **Daily Recommendation:** asks the configured LLM for three strategically distinct candidates, scores every candidate with the trained classifier, and persists the highest-scoring idea with a data-grounded rationale.
-- **Try Your Own Idea:** `POST /predict` scores a creator-authored idea against the same feature and model pipeline without persisting it as a recommendation.
+- **Daily Recommendation:** generates three strategically distinct candidates, scores each with the trained classifier, and saves the highest-scoring idea with a rationale grounded in the creator's data.
+- **Try Your Own Idea:** a panel on the recommendation page scores a creator-authored idea through the same model without saving it as a recommendation.
 - **Recommendation feedback:** creators can mark recommendations as `actioned` or `dismissed`.
-- **Recommendation History:** lists a user's saved recommendations from newest to oldest.
+- **Recommendation History:** lists saved recommendations and their feedback status, newest first.
 
 ## Architecture
 
@@ -36,7 +36,7 @@ Synthetic data generator --POST /ingest--> FastAPI REST API
 Next.js frontend <---------------- REST/JSON ----------------> FastAPI
 ```
 
-All application services run through Docker Compose. Database migrations, synthetic data generation, and model preparation are explicit pipeline commands rather than container startup tasks.
+The API, frontend, PostgreSQL, and MLflow run through Docker Compose. Database migrations, synthetic data generation, and model preparation are separate commands.
 
 ## Technology
 
@@ -56,13 +56,13 @@ All application services run through Docker Compose. Database migrations, synthe
 
 - **Leakage-safe feature pipeline:** training features use an expanding window of strictly prior posts. Dedicated tests verify that future metrics cannot affect an earlier post's features or label.
 - **Planted-signal validation:** the synthetic dataset injects niche-specific `(hook_type, topic)` effects. SHAP analysis compares matching and non-matching rows within each niche to verify that the model recovers the signal.
-- **Honest evaluation:** the classifier is evaluated with a temporal per-user split and compared against a content-type-average baseline. The regressor's weaker Spearman result is retained as a documented limitation rather than hidden.
+- **Model evaluation:** the classifier is evaluated with a temporal per-user split and compared against a content-type-average baseline. The training run also reports regressor performance and checks for recovery of the planted signal.
 - **Diverse recommendation candidates:** three LLM calls run concurrently, each with a distinct safe, alternative, or experimental strategy directive. Candidates are independently featureized and scored before selection.
-- **Stable recommendation scoring:** posting-time features use the user's historically best-performing hour and weekday. This prevents the same idea from receiving different scores simply because it was requested at a different time.
+- **Stable recommendation scoring:** posting-time features use the user's historically best-performing hour and weekday, so scores do not change just because an idea was requested at a different time.
 - **Provider-agnostic LLM integration:** the recommendation pipeline depends on `LLMClient`, not a vendor SDK. The deterministic mock supports full local testing, while Gemini can be enabled through configuration.
 - **Structured LLM guardrails:** responses must be valid JSON using the backend's supported platform, content-type, and hook-type values. Invalid output is retried, and rationales must contain a numeric citation from the grounding data.
 - **Reproducible experiments:** MLflow records the data snapshot hash, parameters, metrics, trained models, feature importance, and SHAP artifacts.
-- **PCA experiment retained separately:** embedding reduction is implemented for evaluation but is not part of the shipped serving pipeline.
+- **Evaluation tools:** the PCA-on-embeddings experiment is available separately and is not part of the serving pipeline.
 
 ## Project structure
 
@@ -76,8 +76,8 @@ backend/
   scripts/      Feature, embedding, baseline, training, and evaluation jobs
   tests/        Backend unit and integration tests
 synthetic_data/ Synthetic creator, content, metric, and planted-signal generator
-frontend/       Next.js leaderboard, insights, recommendation, and predict UI
-docs/           Demo walkthrough and known limitations
+frontend/       Next.js app, components, and shared API/state utilities
+.github/        CI workflows
 docker-compose.yml
 ```
 
@@ -111,13 +111,7 @@ docker compose exec api alembic upgrade head
 
 On Windows, use `Copy-Item .env.example .env` instead of `cp`.
 
-The project uses two `.env` files when running the Python application locally or from its mounted container directory. The root `.env` configures Docker Compose; `backend/.env` is read by the application itself. Keep both complete copies of the required database and MLflow settings if you create `backend/.env` directly:
-
-```bash
-cp .env.example backend/.env
-```
-
-Add any `LLM_PROVIDER`, `GEMINI_API_KEY`, and `GEMINI_MODEL` values to the appropriate environment as well. Never commit either file.
+The root `.env` supplies settings to Docker Compose and the API container. It is local configuration and is not committed. The default LLM provider is `mock` and needs no API key. To use Gemini, see [LLM configuration](#llm-configuration).
 
 The Compose stack starts all services together:
 
@@ -153,12 +147,7 @@ docker compose exec api python scripts/build_features.py
 docker compose exec api python scripts/train_model.py
 ```
 
-The pipeline creates or updates:
-
-- `backend/data/features.parquet`
-- `backend/data/classifier.joblib`
-- `backend/data/category_levels.json`
-- MLflow runs and artifacts in the configured tracking store
+Run the full pipeline before using the leaderboard, insights, recommendation, and prediction flows. Repeat it after creating a fresh database or changing the ingested data. The trained classifier scores recommendations and custom ideas.
 
 Optional commands:
 
@@ -230,7 +219,7 @@ Full request and response schemas are available in Swagger at http://localhost:8
 | `POST` | `/predict?user_id={uuid}` | Score a user-authored idea without persisting it |
 | `POST` | `/recommendations/{id}/feedback` | Mark a recommendation `actioned` or `dismissed` |
 
-The leaderboard, insights, recommendation, and predict endpoints require the generated feature artifacts. Recommendations and custom prediction also require sufficient winning history for the selected user. Ingestion validates supported platforms, content types, hook types, parent IDs, and metric timestamps.
+Build features before using the leaderboard or insights. Recommendations and custom prediction also need the trained classifier and enough top-performing history for the selected user. Ingestion validates supported platforms, content types, hook types, parent IDs, and metric timestamps.
 
 ## Frontend
 
@@ -242,7 +231,7 @@ Current screens include:
 - **Insights:** personal patterns, topic performance, trends, niche comparison, and topic clusters.
 - **Daily Recommendation:** three-candidate generation behind the API, display of the selected idea and predicted score, plus feedback actions.
 - **Recommendation History:** previously generated recommendations with their predicted scores and statuses.
-- **Predict:** on-demand scoring for a creator's own idea.
+- **Try Your Own Idea:** on-demand scoring on the recommendation page, without saving the idea.
 - Loading, empty, error, responsive, and dark-mode states.
 
 Run frontend checks in the running container:
@@ -259,33 +248,10 @@ docker compose exec api pytest -v
 docker compose exec frontend npm test
 ```
 
-The backend suite covers ingestion, temporal splitting, feature leakage, embeddings, clustering, insights, model scoring, leaderboard behavior, recommendation selection, LLM validation, and API error handling. GitHub Actions runs the backend suite against a clean PostgreSQL and pgvector service, applies migrations, and installs the ML dependencies. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
+The backend suite covers ingestion, temporal splitting, feature leakage, embeddings, clustering, insights, model scoring, leaderboard behavior, recommendation selection, LLM validation, and API error handling. GitHub Actions runs the backend tests against PostgreSQL with pgvector, then runs frontend tests and a production build. See [.github/workflows/ci.yaml](.github/workflows/ci.yaml).
 
-The full pipeline has also been reproduced from a clean database on Windows, Fedora, and Ubuntu. The main user-facing flows, including recommendation history and feedback, were manually verified end to end.
+The training pipeline evaluates the classifier against a content-type baseline, reports regressor performance, and checks SHAP values for recovery of the planted signal. Results are recorded in MLflow and depend on the generated data and training configuration.
 
-## Model results
+## Current limits
 
-Latest project evaluation results are summarized below. Results may vary when the synthetic dataset or training configuration changes.
-
-| Metric | Result | Target |
-| --- | --- | --- |
-| Classifier ROC-AUC | approximately 0.74-0.75 | at least 0.70 |
-| Classifier vs. content-type baseline | beats baseline | pass |
-| Regressor Spearman rho | approximately 0.32-0.36 | at least 0.40; documented gap |
-| Planted signal recovery via SHAP | confirmed across five niches | pass |
-
-The regressor gap is retained as an honest limitation. The PCA-on-embeddings experiment was measured and found to slightly regress the headline metrics, so it remains available for reproducibility but is not used in production serving.
-
-Recommendation diversity was evaluated with live Gemini output. Moving from one shared prompt to three distinct strategy directives eliminated identical hooks and topics across all candidates, increased the average classifier score spread from 0.076 to 0.295, and improved the rate at which the winner matched a standout personal pattern from 88% to 100%.
-
-## Documentation
-
-- [Demo script](docs/DEMO_SCRIPT.md): a 10-15 minute walkthrough of the full system.
-- [Known limitations](docs/KNOWN_LIMITATIONS.md): current product and modeling gaps and why they are deferred.
-- [Final project status](docs/FINAL_PROJECT_STATUS.md): implementation summary, validation results, and deferred scope.
-
-## Scope and roadmap
-
-The current MVP does not include authentication, scheduled retraining or baseline refresh jobs, production feedback learning, OAuth, real social-platform connectors, automatic ingestion, or CSV import. Daily recommendations are generated manually through the endpoint. There is no scheduler or uniqueness rule for recommendations.
-
-The next product steps are scheduled baseline and retraining jobs, stronger feedback-loop learning, connector abstractions with one real platform, and continued evaluation hardening.
+This is a prototype built around synthetic data. It has no authentication, real social-platform connectors, automatic ingestion, scheduled retraining, or feedback-driven model updates. Do not expose it as a shared service without adding authentication and reviewing external API usage.

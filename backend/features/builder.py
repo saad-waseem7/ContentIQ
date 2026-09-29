@@ -71,9 +71,10 @@ def _load_embeddings(db: Session) -> dict[uuid.UUID, np.ndarray]:
 
 
 def _compute_expanding_group_stats(df: pd.DataFrame) -> pd.DataFrame:
-    """performance_z and label_overperformer per (user, platform, content_type),
-    using only strictly prior posts in that same group. Explicit loop, see
-    module-level docstring / Checkpoint 14 design note for why."""
+    """Compute each post's baseline within its group using only earlier posts.
+
+    The current post is added to history only after its score and label are set.
+    """
     df = df.sort_values(["user_id", "platform", "content_type", "posted_at"]).reset_index(drop=True)
 
     z_scores = pd.Series(index=df.index, dtype=float)
@@ -180,7 +181,7 @@ def _apply_content_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_feature_table(raw_df: pd.DataFrame, embeddings: dict) -> pd.DataFrame:
-    """Pure function, no DB access — see module docstring."""
+    """Build features from supplied rows and embeddings without database access."""
     df = raw_df.copy()
     df = compute_performance_raw(df)
     df = _compute_expanding_group_stats(df)

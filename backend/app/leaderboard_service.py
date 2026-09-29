@@ -29,8 +29,7 @@ _feature_table_cache_lock = threading.Lock()
 
 
 def clear_feature_table_cache() -> None:
-    """Test/dev utility — not required by any current test, but available
-    if a test ever needs to force a cold reload."""
+    """Clear cached feature tables so tests can verify a cold load."""
     with _feature_table_cache_lock:
         _feature_table_cache.clear()
 

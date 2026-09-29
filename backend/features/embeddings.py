@@ -8,9 +8,8 @@ from sqlalchemy.orm import Session
 from app import models
 from app.crud import bulk_update_content_embeddings
 
-# 384-dim output, matches content.caption_embedding vector(384) exactly.
-# PRD offers this or bge-small — MiniLM chosen since it's the smaller, more
-# commonly used default at this dimension (Checkpoint 9 assumption).
+# MiniLM's 384-dimensional output matches content.caption_embedding; it is
+# the smaller of the embedding models considered for this feature.
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 
 
@@ -26,9 +25,7 @@ def build_embedding_text(title: Optional[str], caption: Optional[str]) -> str:
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
     model = get_model()
-    # normalize_embeddings=True: unit-normalizes each vector so cosine similarity
-    # (needed for the "similarity to top-quartile centroid" feature, next checkpoint)
-    # reduces to a plain dot product later, rather than re-normalizing every comparison.
+    # Unit vectors make cosine similarity a dot product during feature computation.
     vectors = model.encode(texts, batch_size=32, show_progress_bar=False, normalize_embeddings=True)
     return vectors.tolist()
 

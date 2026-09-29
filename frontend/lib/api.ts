@@ -138,22 +138,9 @@ async function handle<T>(res: Response): Promise<T> {
   return res.json();
 }
 
-// --- Simple in-memory GET cache + in-flight request dedupe ---
-// Deliberately NOT a library (SWR/react-query) — a plain Map, per the
-// explicit instruction to keep this minimal. Two jobs:
-//   1. Avoid re-fetching identical data on route navigation within a short
-//      TTL (e.g. bouncing Leaderboard -> Insights -> Leaderboard).
-//   2. Dedupe genuinely-simultaneous requests to the same URL into one
-//      network call.
-// Cache keys are the full request URL, which already includes user_id as
-// a query param — this means cross-user leakage is structurally
-// impossible: two different users are two different cache keys by
-// construction, not by extra logic that could be gotten wrong.
-// TTL is short (30s) rather than infinite, so any change made outside the
-// tracked mutation paths (e.g. re-running scripts/build_features.py while
-// the app is open) still surfaces within a bounded time. Mutating actions
-// (generate recommendation, feedback) explicitly invalidate the relevant
-// prefix immediately rather than waiting on the TTL.
+// Full-URL keys keep users' responses separate; the short TTL bounds staleness
+// for changes outside this client, while in-flight requests are deduplicated.
+// Mutations invalidate affected history immediately.
 const CACHE_TTL_MS = 30_000;
 const _requestCache = new Map<string, { timestamp: number; data: unknown }>();
 const _inFlight = new Map<string, Promise<unknown>>();
@@ -167,8 +154,7 @@ export function invalidateCache(prefix: string): void {
   }
 }
 
-// Test-only utility — clears everything, used in beforeEach to keep tests
-// isolated from each other (see test-file changes below).
+// Clear both maps between tests so cached state cannot leak across cases.
 export function clearApiCache(): void {
   _requestCache.clear();
   _inFlight.clear();

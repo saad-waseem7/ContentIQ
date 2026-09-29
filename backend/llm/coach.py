@@ -150,19 +150,10 @@ def generate_idea(
 def generate_ideas(
     llm_client: LLMClient, niche: str, grounding_posts: list[dict], n: int
 ) -> list[dict]:
-    """Generates up to n candidate ideas CONCURRENTLY (ThreadPoolExecutor) —
-    each candidate is an independent, blocking network call to the LLM;
-    running them in parallel cuts wall-clock time roughly from n sequential
-    round-trips to ~1. Each future is still routed through the unmodified
-    generate_idea() — same directive assignment, same validation/retry
-    guardrails, same partial-failure tolerance as before. Only raises if
-    ALL n attempts fail.
+    """Generate candidates concurrently; each retains generate_idea's validation and retries.
 
-    Note: assumes the underlying LLMClient is safe to call concurrently
-    from multiple threads (true for stateless per-request HTTP calls, which
-    is how both MockLLMClient and GeminiClient are implemented). If a future
-    provider integration maintains per-call mutable state, this assumption
-    would need revisiting.
+    The client must support concurrent calls. Current clients are stateless
+    per-request wrappers; only total failure across all candidates raises.
     """
     directives = [STRATEGY_DIRECTIVES[i % len(STRATEGY_DIRECTIVES)] for i in range(n)]
     ideas: list[dict | None] = [None] * n
