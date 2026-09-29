@@ -56,7 +56,6 @@ services:
     container_name: contentiq_frontend
     restart: unless-stopped
     environment:
-      NODE_ENV: development
       WATCHPACK_POLLING: "true"
     ports:
       - "3000:3000"
