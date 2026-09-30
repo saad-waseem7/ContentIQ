@@ -112,6 +112,27 @@ def _write_features(tmp_path, rows) -> Path:
     return path
 
 
+def _create_db_user(user_id: str) -> None:
+    from app.database import SessionLocal
+    from app import models as db_models
+
+    db = SessionLocal()
+    try:
+        db.add(db_models.User(id=uuid.UUID(user_id), niche="fitness", goal="test"))
+        db.commit()
+    finally:
+        db.close()
+
+
+class _CountingClient:
+    def __init__(self):
+        self.calls = 0
+
+    def generate(self, prompt: str) -> str:
+        self.calls += 1
+        return "{}"
+
+
 def test_404_when_user_has_no_winning_content(tmp_path, monkeypatch):
     user_id = str(uuid.uuid4())
     rows = [_make_row(user_id, "c1", performance_z=-1.0, label=False)]
@@ -136,6 +157,7 @@ def test_503_when_model_artifacts_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(recommend_router, "_llm_client", MockLLMClient())
 
     user_id = str(uuid.uuid4())
+    _create_db_user(user_id)
     rows = [_make_row(user_id, str(uuid.uuid4()), performance_z=2.0, label=True)]
     path = _write_features(tmp_path, rows)
     monkeypatch.setattr(leaderboard_service, "FEATURES_PATH", path)
@@ -144,6 +166,22 @@ def test_503_when_model_artifacts_missing(tmp_path, monkeypatch):
     client = TestClient(app)
     resp = client.post(f"/recommend?user_id={user_id}")
     assert resp.status_code == 503
+
+
+def test_404_without_calling_llm_when_user_missing_from_db(tmp_path, monkeypatch):
+    import app.routers.recommend as recommend_router
+    llm = _CountingClient()
+    monkeypatch.setattr(recommend_router, "_llm_client", llm)
+
+    user_id = str(uuid.uuid4())  # present in the feature table, deliberately absent from Postgres
+    rows = [_make_row(user_id, str(uuid.uuid4()), performance_z=2.0, label=True)]
+    monkeypatch.setattr(leaderboard_service, "FEATURES_PATH", _write_features(tmp_path, rows))
+
+    client = TestClient(app)
+    resp = client.post(f"/recommend?user_id={user_id}")
+
+    assert resp.status_code == 404
+    assert llm.calls == 0
 
 
 def test_feedback_updates_status(tmp_path, monkeypatch):
@@ -162,4 +200,10 @@ def test_feedback_rejects_invalid_status():
 def test_feedback_404_on_unknown_recommendation_id():
     client = TestClient(app)
     resp = client.post(f"/recommendations/{uuid.uuid4()}/feedback", json={"status": "dismissed"})
+    assert resp.status_code == 404
+
+
+def test_feedback_404_on_malformed_recommendation_id():
+    client = TestClient(app)
+    resp = client.post("/recommendations/not-a-uuid/feedback", json={"status": "dismissed"})
     assert resp.status_code == 404

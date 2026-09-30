@@ -37,6 +37,23 @@ class UserNotFoundError(Exception):
     """No user exists with this id."""
 
 
+def _to_uuid(value: str) -> uuid.UUID | None:
+    """Returns None instead of raising when a request-supplied id is not a valid UUID."""
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return None
+
+
+def _require_user(db: Session, user_id: str) -> uuid.UUID:
+    """Returns the user's UUID, or raises UserNotFoundError if the id is malformed
+    or has no row in `users`."""
+    user_uuid = _to_uuid(user_id)
+    if user_uuid is None or db.get(models.User, user_uuid) is None:
+        raise UserNotFoundError(f"No user found with id {user_id}")
+    return user_uuid
+
+
 def _get_content_embeddings(db: Session, content_ids: list) -> dict:
     if not content_ids:
         return {}
@@ -132,6 +149,10 @@ def generate_recommendation(db: Session, user_id: str, llm_client: LLMClient) ->
     if winners_df.empty:
         raise NoWinningContentError(f"User {user_id} has no top-performing content yet to ground a recommendation.")
 
+    # Fail before spending LLM calls: recommendations.user_id is a foreign key to users.id,
+    # and features.parquet can list users that no longer exist in Postgres.
+    user_uuid = _require_user(db, user_id)
+
     top_k = winners_df.sort_values("performance_z", ascending=False).head(GROUNDING_TOP_K)
     niche = user_df["niche"].iloc[0]
 
@@ -151,7 +172,7 @@ def generate_recommendation(db: Session, user_id: str, llm_client: LLMClient) ->
 
     rec = models.Recommendation(
         id=uuid.uuid4(),
-        user_id=uuid.UUID(user_id),
+        user_id=user_uuid,
         idea_text=_format_idea_text(best_idea),
         format=best_idea["content_type"],
         best_time=best_idea["best_posting_window"],
@@ -182,19 +203,18 @@ def score_custom_idea(db: Session, user_id: str, idea: dict) -> float:
 
 
 def get_recommendation_history(db: Session, user_id: str) -> list[models.Recommendation]:
-    user = db.get(models.User, uuid.UUID(user_id))
-    if user is None:
-        raise UserNotFoundError(f"No user found with id {user_id}")
+    user_uuid = _require_user(db, user_id)
     return (
         db.query(models.Recommendation)
-        .filter(models.Recommendation.user_id == uuid.UUID(user_id))
+        .filter(models.Recommendation.user_id == user_uuid)
         .order_by(models.Recommendation.created_at.desc())
         .all()
     )
 
 
 def update_recommendation_status(db: Session, recommendation_id: str, status: str) -> models.Recommendation:
-    rec = db.get(models.Recommendation, uuid.UUID(recommendation_id))
+    rec_uuid = _to_uuid(recommendation_id)
+    rec = db.get(models.Recommendation, rec_uuid) if rec_uuid is not None else None
     if rec is None:
         raise UnknownRecommendationError(f"No recommendation found with id {recommendation_id}")
     rec.status = status

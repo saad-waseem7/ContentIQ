@@ -76,6 +76,12 @@ def test_404_for_nonexistent_user():
     assert resp.status_code == 404
 
 
+def test_404_for_malformed_user_id():
+    client = TestClient(app)
+    resp = client.get("/recommendations?user_id=not-a-uuid")
+    assert resp.status_code == 404
+
+
 def test_no_cross_user_data_leakage():
     db = SessionLocal()
     try:

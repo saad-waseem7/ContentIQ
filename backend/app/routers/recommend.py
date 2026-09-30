@@ -29,7 +29,11 @@ def create_recommendation(user_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=503, detail=str(e))
     except ModelArtifactsNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e))
-    except (UnknownUserError, recommendation_service.NoWinningContentError) as e:
+    except (
+        UnknownUserError,
+        recommendation_service.NoWinningContentError,
+        recommendation_service.UserNotFoundError,
+    ) as e:
         raise HTTPException(status_code=404, detail=str(e))
     except IdeaGenerationError as e:
         raise HTTPException(status_code=502, detail=str(e))
