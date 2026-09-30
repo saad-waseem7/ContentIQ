@@ -13,6 +13,7 @@ import mlflow
 
 from app.config import settings
 from ml import config as cfg
+from ml.artifact_io import atomic_path
 from ml.data_prep import (
     content_type_average_baseline,
     load_labeled_feature_table,
@@ -48,11 +49,17 @@ def main():
     classifier = train_classifier(X_train, y_class_train)
     regressor = train_regressor(X_train, y_reg_train)
 
-    joblib.dump(classifier, MODEL_ARTIFACT_PATH)
     category_levels = {col: X_full[col].cat.categories.tolist() for col in cfg.CATEGORICAL_FEATURES}
-    CATEGORY_LEVELS_PATH.write_text(json.dumps(category_levels))
-    print(f"Saved classifier to {MODEL_ARTIFACT_PATH}")
+    # Levels are written before the model. A reader that lands between the two replaces
+    # sees (old model, new levels), which is safe when a retrain adds categories: the old
+    # model already treats them as unknown. The reverse order would score a category the
+    # new model knows as missing. (A retrain that removes a category has the opposite risk.)
+    with atomic_path(CATEGORY_LEVELS_PATH) as tmp_path:
+        tmp_path.write_text(json.dumps(category_levels))
+    with atomic_path(MODEL_ARTIFACT_PATH) as tmp_path:
+        joblib.dump(classifier, tmp_path)
     print(f"Saved category levels to {CATEGORY_LEVELS_PATH}")
+    print(f"Saved classifier to {MODEL_ARTIFACT_PATH}")
 
     class_proba = classifier.predict_proba(X_test)[:, 1]
     reg_pred = regressor.predict(X_test)

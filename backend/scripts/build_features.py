@@ -5,6 +5,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.database import SessionLocal
 from features.builder import build_feature_table
+from ml.artifact_io import atomic_path
 
 OUTPUT_PATH = Path(__file__).resolve().parents[1] / "data" / "features.parquet"
 
@@ -20,7 +21,8 @@ def main():
     df["user_id"] = df["user_id"].astype(str)
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(OUTPUT_PATH, index=False)
+    with atomic_path(OUTPUT_PATH) as tmp_path:
+        df.to_parquet(tmp_path, index=False)
     print(f"Feature table built: {len(df)} rows, {len(df.columns)} columns. Saved to {OUTPUT_PATH}")
     print(f"Rows with valid label_overperformer: {df['label_overperformer'].notna().sum()}")
 
