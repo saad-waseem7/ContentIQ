@@ -55,10 +55,13 @@ def _dimension_breakdown(df_valid: pd.DataFrame, column: str, min_n: int) -> lis
 
 def personal_pattern_insights(user_df: pd.DataFrame) -> dict:
     df_valid = _valid_rows(_add_time_window(_add_primary_topic(user_df)))
+    # content_type is deliberately not a dimension: performance_z is normalized within each
+    # (platform, content_type) group, so its mean is ~0 for every content type by construction
+    # and says nothing about which format performs better. The other dimensions cross-cut
+    # those groups, so their means are meaningful.
     return {
         "total_posts_analyzed": int(len(df_valid)),
         "dimensions": {
-            "content_type": _dimension_breakdown(df_valid, "content_type", cfg.PERSONAL_PATTERN_MIN_N),
             "hook_type": _dimension_breakdown(df_valid, "hook_type", cfg.PERSONAL_PATTERN_MIN_N),
             "topic": _dimension_breakdown(df_valid, "primary_topic_tag", cfg.PERSONAL_PATTERN_MIN_N),
             "posting_time_window": _dimension_breakdown(df_valid, "posting_time_window", cfg.PERSONAL_PATTERN_MIN_N),
@@ -115,6 +118,12 @@ def monthly_performance(user_df: pd.DataFrame) -> list[dict]:
 
 
 def niche_comparison(user_df: pd.DataFrame, niche_df: pd.DataFrame, user_id: str) -> dict:
+    """Compares absolute engagement rate (performance_raw) with other creators' posts of the
+    same platform and content type.
+
+    performance_z cannot be used here: it is measured against each creator's own history, so
+    its mean is ~0 for every creator whether they perform well or badly.
+    """
     user_valid = _valid_rows(user_df)
     others_valid = _valid_rows(niche_df[niche_df["user_id"] != user_id])
     other_user_count = others_valid["user_id"].nunique()
@@ -124,28 +133,39 @@ def niche_comparison(user_df: pd.DataFrame, niche_df: pd.DataFrame, user_id: str
         "niche_other_users_n": int(other_user_count),
         "niche_total_posts_n": int(len(others_valid)),
     }
+    insufficient = {"sufficient_data": False, **base}
     if (
         user_valid.empty
         or other_user_count < cfg.NICHE_COMPARISON_MIN_OTHER_USERS
         or len(others_valid) < cfg.NICHE_COMPARISON_MIN_TOTAL_POSTS
     ):
-        return {"sufficient_data": False, **base}
+        return insufficient
 
-    user_mean = float(user_valid["performance_z"].mean())
-    niche_mean = float(others_valid["performance_z"].mean())
+    group_cols = ["platform", "content_type"]
+    niche_medians = others_valid.groupby(group_cols)["performance_raw"].median().rename("niche_group_median")
+    comparable = user_valid.join(niche_medians, on=group_cols).dropna(subset=["niche_group_median"])
+    if len(comparable) < cfg.PERSONAL_PATTERN_MIN_N:
+        return insufficient
+
+    user_median = float(comparable["performance_raw"].median())
+    niche_median = float(comparable["niche_group_median"].median())
+    if niche_median <= 0:
+        return insufficient
+
     return {
         "sufficient_data": True,
-        "user_mean_performance_z": round(user_mean, 3),
-        "niche_mean_performance_z": round(niche_mean, 3),
-        "delta": round(user_mean - niche_mean, 3),
-        **base,
+        "user_median_engagement_rate": round(user_median, 4),
+        "niche_median_engagement_rate": round(niche_median, 4),
+        "engagement_ratio": round(user_median / niche_median, 3),
+        **{**base, "user_n": int(len(comparable))},
     }
 
 
 def niche_top_patterns(niche_df: pd.DataFrame) -> list[dict]:
     df_valid = _valid_rows(_add_primary_topic(niche_df))
     results = []
-    for dim in ("content_type", "hook_type", "primary_topic_tag"):
+    # Same reason as personal_pattern_insights: content_type means are ~0 by construction.
+    for dim in ("hook_type", "primary_topic_tag"):
         for entry in _dimension_breakdown(df_valid, dim, cfg.NICHE_PATTERN_MIN_N):
             results.append({"dimension": dim, **entry})
     results.sort(key=lambda r: r["mean_performance_z"], reverse=True)

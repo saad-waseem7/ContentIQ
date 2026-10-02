@@ -62,12 +62,12 @@ export interface MonthlyPerformanceEntry {
 
 export interface NicheComparison {
   sufficient_data: boolean;
-  user_mean_performance_z?: number;
   user_n: number;
-  niche_mean_performance_z?: number;
   niche_other_users_n: number;
   niche_total_posts_n: number;
-  delta?: number;
+  user_median_engagement_rate?: number;
+  niche_median_engagement_rate?: number;
+  engagement_ratio?: number;
 }
 
 export interface NichePatternEntry {
@@ -112,7 +112,7 @@ export interface PredictRequest {
   hook_type: string; content_type: string; platform: string;
   primary_topic_tag: string; duration_sec?: number | null; sample_caption: string;
 }
-export interface PredictResponse { predicted_score: number; }
+export interface PredictResponse { predicted_score: number; topic_recognized?: boolean; }
 
 export class ApiError extends Error {
   status: number;
@@ -129,7 +129,13 @@ async function handle<T>(res: Response): Promise<T> {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail = body.detail || detail;
+      const d = body.detail;
+      if (typeof d === "string" && d) {
+        detail = d;
+      } else if (Array.isArray(d)) {
+        // FastAPI validation errors arrive as a list of { msg, loc, ... } objects.
+        detail = d.map((item) => item?.msg).filter(Boolean).join("; ") || detail;
+      }
     } catch {
       // response wasn't JSON — keep statusText
     }

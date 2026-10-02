@@ -90,21 +90,59 @@ def test_user_cluster_summary_empty_when_no_label_df():
     assert clustering.build_user_cluster_summary(None, ["c1"]) == []
 
 
-def test_cluster_cache_reused_when_embedding_count_unchanged(monkeypatch):
-    clustering.clear_cluster_cache()
+def _patch_cluster_db(monkeypatch, embeddings_map):
+    """Counts the cheap COUNT query and the expensive full embedding load separately."""
+    calls = {"count": 0, "load": 0}
 
-    call_count = {"n": 0}
-    embeddings_map, labels_true = _make_separated_embeddings()
+    def fake_count(db, niche):
+        calls["count"] += 1
+        return len(embeddings_map)
 
     def fake_load(db, niche):
-        call_count["n"] += 1
+        calls["load"] += 1
         return embeddings_map
 
+    monkeypatch.setattr(clustering, "_count_niche_embeddings", fake_count)
     monkeypatch.setattr(clustering, "_load_niche_embeddings", fake_load)
+    return calls
+
+
+def test_cluster_cache_hit_does_not_reload_embeddings(monkeypatch):
+    clustering.clear_cluster_cache()
+    embeddings_map, labels_true = _make_separated_embeddings()
+    calls = _patch_cluster_db(monkeypatch, embeddings_map)
     niche_df = _make_niche_df(labels_true, {0: "carousel", 1: "text", 2: "image", 3: "short_video"})
 
     r1, _ = clustering.load_and_compute_niche_clusters(None, "fitness", niche_df)
     r2, _ = clustering.load_and_compute_niche_clusters(None, "fitness", niche_df)
 
-    assert call_count["n"] == 2  # DB queried both times (cheap freshness check)...
-    assert r1 is r2  # ...but the expensive KMeans result is the SAME cached object, not recomputed    
+    assert calls["count"] == 2  # the cheap freshness check runs every time...
+    assert calls["load"] == 1  # ...the full embedding load only on the miss
+    assert r1 is r2  # and the KMeans result is the same cached object
+
+
+def test_cluster_cache_invalidated_when_feature_rows_change_with_same_embedding_count(monkeypatch):
+    clustering.clear_cluster_cache()
+    embeddings_map, labels_true = _make_separated_embeddings()
+    calls = _patch_cluster_db(monkeypatch, embeddings_map)
+    niche_df = _make_niche_df(labels_true, {0: "carousel", 1: "text", 2: "image", 3: "short_video"})
+    rebuilt_df = niche_df.assign(performance_z=niche_df["performance_z"] + 0.25)  # features.parquet was rebuilt
+
+    r1, _ = clustering.load_and_compute_niche_clusters(None, "fitness", niche_df)
+    r2, _ = clustering.load_and_compute_niche_clusters(None, "fitness", rebuilt_df)
+
+    assert calls["load"] == 2
+    assert r1 is not r2
+
+
+def test_cluster_cache_invalidated_when_embedding_count_changes(monkeypatch):
+    clustering.clear_cluster_cache()
+    embeddings_map, labels_true = _make_separated_embeddings()
+    calls = _patch_cluster_db(monkeypatch, embeddings_map)
+    niche_df = _make_niche_df(labels_true, {0: "carousel", 1: "text", 2: "image", 3: "short_video"})
+
+    clustering.load_and_compute_niche_clusters(None, "fitness", niche_df)
+    embeddings_map["new_post"] = next(iter(embeddings_map.values()))  # new content was embedded
+    clustering.load_and_compute_niche_clusters(None, "fitness", niche_df)
+
+    assert calls["load"] == 2    

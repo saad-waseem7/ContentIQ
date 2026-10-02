@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { RecommendationResponse } from "@/lib/api";
 import { useUserId } from "@/lib/UserContext";
 
@@ -17,6 +17,9 @@ export function RecommendationProvider({ children }: { children: ReactNode }) {
   const { userId } = useUserId();
   const [activeRecommendation, setActiveRecommendationState] = useState<RecommendationResponse | null>(null);
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
+  // Latest selected user, readable from callbacks that outlive the render that created them.
+  const userIdRef = useRef(userId);
+  userIdRef.current = userId;
 
   // Leak prevention: if the globally selected user changes away from whoever
   // this recommendation belongs to, clear it — never display one user's
@@ -29,12 +32,16 @@ export function RecommendationProvider({ children }: { children: ReactNode }) {
   }, [userId, ownerUserId]);
 
   function setActiveRecommendation(rec: RecommendationResponse, forUserId: string) {
+    // A response that arrives after the user switched must not be shown for the new user.
+    if (forUserId !== userIdRef.current) return;
     setActiveRecommendationState(rec);
     setOwnerUserId(forUserId);
   }
 
   function updateActiveRecommendationStatus(rec: RecommendationResponse) {
-    setActiveRecommendationState(rec);
+    // Only update the recommendation that is still on screen; a late feedback response
+    // must not bring back one that was cleared or belongs to a previously selected user.
+    setActiveRecommendationState((current) => (current && current.id === rec.id ? rec : current));
   }
 
   function clearActiveRecommendation() {

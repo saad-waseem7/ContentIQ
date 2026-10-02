@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -25,6 +25,11 @@ class ChannelIngest(BaseModel):
         if v not in PLATFORMS:
             raise ValueError(f"platform must be one of {sorted(PLATFORMS)}")
         return v
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Treats a naive datetime as UTC so naive and timezone-aware values can be compared."""
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
 class MetricIngest(BaseModel):
@@ -71,7 +76,7 @@ class ContentIngest(BaseModel):
     @model_validator(mode="after")
     def metrics_not_before_posted_at(self):
         for m in self.metrics:
-            if m.captured_at < self.posted_at:
+            if _as_utc(m.captured_at) < _as_utc(self.posted_at):
                 raise ValueError(
                     "metric captured_at cannot be before content posted_at"
                 )
@@ -173,12 +178,12 @@ class MonthlyPerformanceEntry(BaseModel):
 
 class NicheComparison(BaseModel):
     sufficient_data: bool
-    user_mean_performance_z: Optional[float] = None
     user_n: int
-    niche_mean_performance_z: Optional[float] = None
     niche_other_users_n: int
     niche_total_posts_n: int
-    delta: Optional[float] = None
+    user_median_engagement_rate: Optional[float] = None
+    niche_median_engagement_rate: Optional[float] = None
+    engagement_ratio: Optional[float] = None
 
 
 class NichePatternEntry(BaseModel):
@@ -263,6 +268,7 @@ class PredictRequest(BaseModel):
 
 class PredictResponse(BaseModel):
     predicted_score: float
+    topic_recognized: bool = True
 
 class RecommendationHistoryResponse(BaseModel):
     user_id: str

@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 import joblib
+import numpy as np
 from ml import idea_scoring
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -15,6 +16,7 @@ from ml.idea_scoring import (
     build_idea_feature_row,
     load_category_levels,
     load_classifier,
+    resolve_topic,
     score_idea,
 )
 
@@ -109,3 +111,41 @@ def test_load_classifier_uses_cache_on_second_call(tmp_path, monkeypatch):
     m1 = idea_scoring.load_classifier()
     m2 = idea_scoring.load_classifier()
     assert m1 is m2
+
+
+def test_hashtag_count_comes_from_the_user_context_not_a_hardcoded_zero():
+    df = build_idea_feature_row(IDEA, dict(USER_CONTEXT, hashtag_count=2.0))
+    assert df["hashtag_count"].iloc[0] == 2.0
+
+
+def test_hashtag_count_falls_back_to_zero_when_context_has_none():
+    assert build_idea_feature_row(IDEA, USER_CONTEXT)["hashtag_count"].iloc[0] == 0
+    assert build_idea_feature_row(IDEA, dict(USER_CONTEXT, hashtag_count=None))["hashtag_count"].iloc[0] == 0
+
+
+def test_resolve_topic_maps_display_spelling_onto_the_trained_level():
+    levels = {"primary_topic_tag": ["debt_payoff", "quick_recipes"]}
+    assert resolve_topic("Quick Recipes", levels) == "quick_recipes"
+    assert resolve_topic("something new", levels) == "something_new"  # unknown stays unknown
+
+
+class _TopicRecordingClassifier:
+    def __init__(self):
+        self.seen = []
+
+    def predict_proba(self, X):
+        self.seen.append(X["primary_topic_tag"].iloc[0])
+        return np.array([[0.4, 0.6]])
+
+
+def test_score_idea_sees_the_trained_topic_level_when_typed_with_different_spelling(monkeypatch):
+    classifier = _TopicRecordingClassifier()
+    monkeypatch.setattr(idea_scoring, "load_classifier", lambda: classifier)
+    monkeypatch.setattr(idea_scoring, "load_category_levels", lambda: {"primary_topic_tag": ["transformation"]})
+
+    score_idea(dict(IDEA, primary_topic_tag="Transformation"), USER_CONTEXT)
+    score_idea(dict(IDEA, primary_topic_tag="never seen topic"), USER_CONTEXT)
+
+    assert classifier.seen[0] == "transformation"
+    assert classifier.seen[1] != classifier.seen[1]  # NaN: an unknown topic is scored as missing
+

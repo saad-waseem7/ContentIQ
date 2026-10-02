@@ -80,10 +80,12 @@ def _compute_expanding_group_stats(df: pd.DataFrame) -> pd.DataFrame:
     z_scores = pd.Series(index=df.index, dtype=float)
     labels = pd.Series(index=df.index, dtype=object)
     has_history = pd.Series(index=df.index, dtype=bool)
+    n_prior = pd.Series(0, index=df.index, dtype=int)
 
     for _, group in df.groupby(["user_id", "platform", "content_type"], sort=False):
         history: list[float] = []
         for idx, row in group.iterrows():
+            n_prior[idx] = len(history)
             if len(history) >= cfg.MIN_GROUP_SIZE_FOR_ZSCORE:
                 mean = np.mean(history)
                 std = np.std(history, ddof=1)
@@ -100,6 +102,7 @@ def _compute_expanding_group_stats(df: pd.DataFrame) -> pd.DataFrame:
     df["performance_z"] = z_scores
     df["label_overperformer"] = labels
     df["has_sufficient_group_history"] = has_history
+    df["n_prior_in_group"] = n_prior
     return df
 
 

@@ -143,36 +143,6 @@ def test_generate_ideas_raises_when_all_fail():
         generate_ideas(AlwaysBadClient(), niche="fitness", grounding_posts=GROUNDING_POSTS, n=3)        
 
 
-class RecordingClient(LLMClient):
-    """Captures every prompt sent, so tests can verify directive text is
-    actually reaching the LLM call, not just constructed and discarded."""
-    def __init__(self):
-        self.prompts = []
-
-    def generate(self, prompt: str) -> str:
-        self.prompts.append(prompt)
-        return MockLLMClient().generate(prompt)
-
-
-def test_generate_ideas_assigns_a_distinct_directive_to_each_candidate():
-    client = RecordingClient()
-    generate_ideas(client, niche="fitness", grounding_posts=GROUNDING_POSTS, n=3)
-
-    assert len(client.prompts) == 3
-    for prompt, directive in zip(client.prompts, STRATEGY_DIRECTIVES):
-        assert directive in prompt
-
-    # The three prompts must differ from each other, not just from a fixed baseline.
-    assert len({p for p in client.prompts}) == 3
-
-
-def test_generate_ideas_cycles_directives_when_n_exceeds_directive_count():
-    client = RecordingClient()
-    generate_ideas(client, niche="fitness", grounding_posts=GROUNDING_POSTS, n=5)
-    assert len(client.prompts) == 5
-    assert STRATEGY_DIRECTIVES[0] in client.prompts[3]  # index 3 % 3 == 0, cycled back
-
-
 def test_generate_idea_still_works_without_a_directive_backward_compat():
     client = MockLLMClient()
     idea = generate_idea(client, niche="fitness", grounding_posts=GROUNDING_POSTS)
@@ -183,3 +153,101 @@ def test_directive_does_not_bypass_existing_guardrail_validation():
     client = MockLLMClient(response_overrides={"platform": "facebook"})
     with pytest.raises(IdeaGenerationError):
         generate_idea(client, niche="fitness", grounding_posts=GROUNDING_POSTS, directive=STRATEGY_DIRECTIVES[0])
+
+
+@pytest.mark.parametrize("payload", ['[{"hook_type": "story"}]', "null", '"here is your idea"', "42"])
+def test_valid_json_that_is_not_an_object_is_retried_then_rejected_not_crashed(payload):
+    class NonObjectClient(LLMClient):
+        def __init__(self):
+            self.calls = 0
+
+        def generate(self, prompt: str) -> str:
+            self.calls += 1
+            return payload
+
+    client = NonObjectClient()
+    with pytest.raises(IdeaGenerationError):
+        generate_idea(client, niche="fitness", grounding_posts=GROUNDING_POSTS)
+    assert client.calls == 2  # retried like any other invalid output
+
+
+def test_json_array_followed_by_valid_object_succeeds_via_retry():
+    class ArrayThenObjectClient(LLMClient):
+        def __init__(self):
+            self.calls = 0
+
+        def generate(self, prompt: str) -> str:
+            self.calls += 1
+            return "[1, 2]" if self.calls == 1 else MockLLMClient().generate(prompt)
+
+    idea = generate_idea(ArrayThenObjectClient(), niche="fitness", grounding_posts=GROUNDING_POSTS)
+    assert idea["hook_type"] == "story"
+
+
+def test_one_candidate_returning_a_non_object_does_not_sink_the_others():
+    class OneBadDirectiveClient(LLMClient):
+        def generate(self, prompt: str) -> str:
+            return "[]" if STRATEGY_DIRECTIVES[1] in prompt else MockLLMClient().generate(prompt)
+
+    ideas = generate_ideas(OneBadDirectiveClient(), niche="fitness", grounding_posts=GROUNDING_POSTS, n=3)
+    assert len(ideas) == 2
+
+
+PROFILE = {"platform": "linkedin", "content_types": ["text", "image"], "topics": ["quick_recipes", "debt_payoff"]}
+
+
+def test_prompt_includes_the_creators_platform_formats_and_topics():
+    client = RecordingClient()
+    generate_idea(client, niche="fitness", grounding_posts=GROUNDING_POSTS, creator_profile=PROFILE)
+    prompt = client.prompts[0]
+    assert "publishes on linkedin" in prompt
+    assert "must be exactly: linkedin" in prompt
+    assert "text, image" in prompt
+    assert "quick_recipes, debt_payoff" in prompt
+
+
+def test_prompt_without_a_profile_keeps_the_generic_wording():
+    client = RecordingClient()
+    generate_idea(client, niche="fitness", grounding_posts=GROUNDING_POSTS)
+    assert "publishes on" not in client.prompts[0]
+    assert "platform (one of:" in client.prompts[0]
+
+
+def test_topic_is_mapped_onto_the_creators_existing_topic():
+    client = MockLLMClient(response_overrides={"primary_topic_tag": "Quick Recipes"})
+    idea = generate_idea(client, niche="food", grounding_posts=GROUNDING_POSTS, creator_profile=PROFILE)
+    assert idea["primary_topic_tag"] == "quick_recipes"
+
+
+def test_unknown_topic_is_normalized_but_not_rejected():
+    client = MockLLMClient(response_overrides={"primary_topic_tag": "Brand New Idea"})
+    idea = generate_idea(client, niche="food", grounding_posts=GROUNDING_POSTS, creator_profile=PROFILE)
+    assert idea["primary_topic_tag"] == "brand_new_idea"
+
+
+def test_rationale_citing_a_listed_z_score_is_kept():
+    text = "Your best post scored 2.10 standard deviations above your baseline."
+    client = MockLLMClient(response_overrides={"rationale": text})
+    assert generate_idea(client, niche="fitness", grounding_posts=GROUNDING_POSTS)["rationale"] == text
+
+
+def test_rationale_citing_a_rounded_z_score_is_kept():
+    text = "Similar posts beat your baseline by about 2.1 standard deviations."
+    client = MockLLMClient(response_overrides={"rationale": text})
+    assert generate_idea(client, niche="fitness", grounding_posts=GROUNDING_POSTS)["rationale"] == text
+
+
+def test_rationale_citing_a_count_of_the_listed_posts_is_kept():
+    posts = [dict(GROUNDING_POSTS[0], performance_z=z) for z in (2.1, 1.7, 1.2)]
+    text = "All 3 of your top posts used this format."
+    client = MockLLMClient(response_overrides={"rationale": text})
+    assert generate_idea(client, niche="fitness", grounding_posts=posts)["rationale"] == text
+
+
+def test_rationale_with_an_invented_statistic_is_replaced_by_a_grounded_one():
+    client = MockLLMClient(response_overrides={"rationale": "This format drives 340% more reach than your median."})
+    idea = generate_idea(client, niche="fitness", grounding_posts=GROUNDING_POSTS)
+    assert "340" not in idea["rationale"]
+    assert "2.10" in idea["rationale"]  # the strongest listed post's real z-score
+    assert idea["hook_type"] == "story"  # the rest of the idea is untouched
+

@@ -5,6 +5,8 @@ from typing import Optional
 
 import pandas as pd
 
+from features.config import MIN_PRIOR_POSTS_FOR_RANKING
+
 FEATURES_PATH = Path(__file__).resolve().parents[1] / "data" / "features.parquet"
 
 
@@ -77,7 +79,10 @@ def build_leaderboard(user_id: str, features_path: Optional[Path] = None) -> dic
 
     total_posts_in_history = len(user_df)
 
-    ranked_df = user_df[user_df["has_sufficient_group_history"]].copy()
+    ranked_mask = user_df["has_sufficient_group_history"]
+    if "n_prior_in_group" in user_df.columns:  # absent in feature tables built before this column existed
+        ranked_mask = ranked_mask & (user_df["n_prior_in_group"] >= MIN_PRIOR_POSTS_FOR_RANKING)
+    ranked_df = user_df[ranked_mask].copy()
     ranked_df = ranked_df.sort_values("performance_z", ascending=False).reset_index(drop=True)
     ranked_df["rank"] = ranked_df.index + 1
 

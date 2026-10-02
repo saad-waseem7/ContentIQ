@@ -56,3 +56,55 @@ it("Clear removes it from display state only", () => {
   fireEvent.click(screen.getByText("clear"));
   expect(screen.getByTestId("active")).toHaveTextContent("none");
 });
+
+const REC = {
+  id: "r1", idea_text: "Idea for A", format: "carousel", best_time: null,
+  rationale: "r", predicted_score: 0.5, status: "proposed", created_at: "2026-01-01T00:00:00Z",
+};
+
+function LateResponseConsumer() {
+  const { activeRecommendation, setActiveRecommendation, updateActiveRecommendationStatus, clearActiveRecommendation } = useActiveRecommendation();
+  return (
+    <div>
+      <div data-testid="active">{activeRecommendation ? `${activeRecommendation.idea_text}|${activeRecommendation.status}` : "none"}</div>
+      <button onClick={() => setActiveRecommendation(REC, "user-a")}>set-for-a</button>
+      <button onClick={() => setActiveRecommendation({ ...REC, idea_text: "Idea for B" }, "user-b")}>set-for-b</button>
+      <button onClick={() => updateActiveRecommendationStatus({ ...REC, status: "actioned" })}>late-feedback</button>
+      <button onClick={clearActiveRecommendation}>clear</button>
+    </div>
+  );
+}
+
+it("ignores a recommendation that arrives for a user who is no longer selected", () => {
+  render(
+    <UserProvider initialUserId="user-a">
+      <RecommendationProvider><LateResponseConsumer /></RecommendationProvider>
+    </UserProvider>
+  );
+  fireEvent.click(screen.getByText("set-for-b"));
+  expect(screen.getByTestId("active")).toHaveTextContent("none");
+});
+
+it("a late feedback response does not bring back a recommendation that was cleared", () => {
+  render(
+    <UserProvider initialUserId="user-a">
+      <RecommendationProvider><LateResponseConsumer /></RecommendationProvider>
+    </UserProvider>
+  );
+  fireEvent.click(screen.getByText("set-for-a"));
+  fireEvent.click(screen.getByText("clear"));
+  fireEvent.click(screen.getByText("late-feedback"));
+  expect(screen.getByTestId("active")).toHaveTextContent("none");
+});
+
+it("feedback still updates the recommendation that is on screen", () => {
+  render(
+    <UserProvider initialUserId="user-a">
+      <RecommendationProvider><LateResponseConsumer /></RecommendationProvider>
+    </UserProvider>
+  );
+  fireEvent.click(screen.getByText("set-for-a"));
+  fireEvent.click(screen.getByText("late-feedback"));
+  expect(screen.getByTestId("active")).toHaveTextContent("Idea for A|actioned");
+});
+

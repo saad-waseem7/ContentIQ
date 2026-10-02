@@ -40,17 +40,32 @@ export default function InsightsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setData(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    // Ignore responses that arrive after the selected user changed.
+    let cancelled = false;
     setLoading(true);
     setError(null);
     setData(null);
     getInsights(userId)
-      .then(setData)
+      .then((d) => {
+        if (!cancelled) setData(d);
+      })
       .catch((e) => {
+        if (cancelled) return;
         const msg = e instanceof ApiError ? messageForStatus(e.status, e.message) : "Couldn't reach the server.";
         setError(msg);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [userId]);
 
   const helper = (
@@ -82,7 +97,6 @@ export default function InsightsPage() {
       {!loading && !error && data && (
         <>
           {(() => {
-            const topContentType = topEntry(data.personal_patterns.dimensions.content_type);
             const topTime = topEntry(data.personal_patterns.dimensions.posting_time_window);
             const topTopic = topEntry(data.personal_patterns.dimensions.topic);
             const topHook = topEntry(data.personal_patterns.dimensions.hook_type);
@@ -90,20 +104,17 @@ export default function InsightsPage() {
 
             return (
               <>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                  <StatCard label="Top Content Type" value={topContentType ? humanLabel("content_type", topContentType.value) : "Not enough data"}
-                    sublabel={topContentType ? `${((topContentType.n / total) * 100).toFixed(0)}% of posts` : undefined} />
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
                   <StatCard label="Best Time to Post" value={topTime ? humanLabel("posting_time_window", topTime.value) : "Not enough data"}
                     sublabel={topTime ? `${signed(topTime.mean_performance_z)} SD` : undefined} />
                   <StatCard label="Top Topic" value={topTopic ? humanLabel("topic", topTopic.value) : "Not enough data"}
-                    sublabel={topTopic ? `${((topTopic.n / total) * 100).toFixed(0)}% of top content` : undefined} />
+                    sublabel={topTopic ? `${((topTopic.n / total) * 100).toFixed(0)}% of posts` : undefined} />
                   <StatCard label="Strongest Hook" value={topHook ? humanLabel("hook_type", topHook.value) : "Not enough data"}
                     sublabel={topHook ? `${signed(topHook.mean_performance_z)} SD` : undefined} />
                 </div>
 
                 <Section title="What Works For You" subtitle={`Based on ${total} of your own posts with enough history to compare`}>
                   <div className="grid sm:grid-cols-2 gap-6">
-                    <DimensionList title="Content Type" dimension="content_type" entries={data.personal_patterns.dimensions.content_type} />
                     <DimensionList title="Hook Type" dimension="hook_type" entries={data.personal_patterns.dimensions.hook_type} />
                     <DimensionList title="Topic" dimension="topic" entries={data.personal_patterns.dimensions.topic} />
                     <DimensionList title="Time of Day" dimension="posting_time_window" entries={data.personal_patterns.dimensions.posting_time_window} />
@@ -132,7 +143,7 @@ export default function InsightsPage() {
                     <div>
                       <p className="text-sm font-medium text-slate-800 dark:text-slate-200 mb-2">
                         Your recent performance is{" "}
-                        {(data.trend.recent_mean_performance_z ?? 0) >= (data.trend.historical_mean_performance_z ?? 0) ? "above" : "below"}{" "}
+                        {data.trend.direction === "improving" ? "above" : data.trend.direction === "declining" ? "below" : "in line with"}{" "}
                         your usual baseline.
                       </p>
                       <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500 dark:text-slate-400 mb-1">
@@ -148,14 +159,22 @@ export default function InsightsPage() {
                 </Section>
 
                 <Section title="You vs. Your Niche" subtitle="Population-level evidence, kept separate from your personal patterns above">
-                  {data.niche_comparison.sufficient_data ? (
-                    <p className="text-sm text-slate-700 dark:text-slate-300 flex items-center gap-1.5 flex-wrap">
-                      You're averaging{" "}
-                      <span className="font-medium">{(data.niche_comparison.delta ?? 0) > 0 ? "above" : "below"} the typical creator</span>{" "}
-                      in {humanLabel("niche", data.niche)}, based on {data.niche_comparison.niche_other_users_n} other creators and {data.niche_comparison.niche_total_posts_n} posts.
-                      <InfoTooltip text={`Your average: ${signed(data.niche_comparison.user_mean_performance_z ?? 0)} SD. Niche average: ${signed(data.niche_comparison.niche_mean_performance_z ?? 0)} SD.`} />
-                    </p>
-                  ) : (
+                  {data.niche_comparison.sufficient_data && data.niche_comparison.engagement_ratio != null ? (() => {
+                    const nc = data.niche_comparison;
+                    const ratio = nc.engagement_ratio ?? 1;
+                    const rate = (x?: number) => `${((x ?? 0) * 100).toFixed(1)}%`;
+                    const comparison = ratio >= 1.1 ? "higher than" : ratio <= 0.9 ? "lower than" : "about the same as";
+                    return (
+                      <p className="text-sm text-slate-700 dark:text-slate-300 flex items-center gap-1.5 flex-wrap">
+                        Your typical post earns{" "}
+                        <span className="font-medium">{rate(nc.user_median_engagement_rate)} engagement</span>{" "}
+                        per person reached, <span className="font-medium">{comparison}</span> the {rate(nc.niche_median_engagement_rate)} typical
+                        for similar posts from {nc.niche_other_users_n} other creators in {humanLabel("niche", data.niche)}
+                        {comparison !== "about the same as" && <> ({ratio.toFixed(1)}x)</>}.
+                        <InfoTooltip text="Median engagement (likes, comments, shares and saves) divided by reach, compared with other creators' posts on the same platform and in the same format." />
+                      </p>
+                    );
+                  })() : (
                     <p className="text-xs text-slate-400 dark:text-slate-500">Not enough other creators in this niche yet to compare against.</p>
                   )}
                 </Section>

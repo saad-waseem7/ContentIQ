@@ -19,6 +19,11 @@ MIN_GROUP_SIZE_FOR_ZSCORE = (
     3  # same floor as user_baselines, avoids a meaningless z-score off 1-2 points
 )
 
+# A z-score built from only a few earlier posts is extreme and noisy, so posts with fewer than
+# this many earlier posts in their group are not ranked on the leaderboard and are only used
+# for recommendation grounding when nothing better exists. Labels and training are unaffected.
+MIN_PRIOR_POSTS_FOR_RANKING = 10
+
 CTA_PATTERNS = [
     r"\blink in bio\b",
     r"\bcomment below\b",

@@ -9,6 +9,7 @@ import pandas as pd
 
 import features.config as feat_cfg
 import features.content_features as cf
+from features.topics import match_topic, normalize_topic
 from ml import config as ml_cfg
 from ml.data_prep import prepare_model_matrix
 
@@ -108,7 +109,7 @@ def build_idea_feature_row(idea: dict, user_context: dict) -> pd.DataFrame:
         "duration_sec": idea.get("duration_sec"),
         "caption_length_chars": cf.caption_length_chars(caption),
         "caption_length_words": cf.caption_length_words(caption),
-        "hashtag_count": 0,
+        "hashtag_count": user_context.get("hashtag_count") if user_context.get("hashtag_count") is not None else 0,
         "emoji_count": cf.emoji_count(caption),
         "has_cta": cf.has_cta(caption),
         "posting_hour": posting_hour,
@@ -137,9 +138,21 @@ def apply_known_category_levels(X: pd.DataFrame, category_levels: dict) -> pd.Da
     return X
 
 
+def resolve_topic(topic: str, category_levels: dict) -> str:
+    """Maps a topic onto the exact level the model was trained on when they differ only in
+    case, spaces or hyphens; otherwise returns it normalized (and it stays unknown)."""
+    return match_topic(topic, category_levels.get("primary_topic_tag", [])) or normalize_topic(topic)
+
+
+def topic_is_known(topic: str) -> bool:
+    """False when the model has never seen this topic, so scoring treats it as missing."""
+    return match_topic(topic, load_category_levels().get("primary_topic_tag", [])) is not None
+
+
 def score_idea(idea: dict, user_context: dict) -> float:
     classifier = load_classifier()
     category_levels = load_category_levels()
+    idea = {**idea, "primary_topic_tag": resolve_topic(idea["primary_topic_tag"], category_levels)}
     raw_df = build_idea_feature_row(idea, user_context)
     X = apply_known_category_levels(prepare_model_matrix(raw_df), category_levels)
     return float(classifier.predict_proba(X)[:, 1][0])

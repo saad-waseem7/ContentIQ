@@ -32,3 +32,38 @@ it("shows an error message when scoring fails", async () => {
   fireEvent.click(screen.getByRole("button", { name: /score this idea/i }));
   await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
 });
+
+function submitIdea(topic = "transformation") {
+  fireEvent.change(screen.getByPlaceholderText(/topic/i), { target: { value: topic } });
+  fireEvent.change(screen.getByPlaceholderText(/caption or title/i), { target: { value: "My own idea caption." } });
+  fireEvent.click(screen.getByRole("button", { name: /score this idea/i }));
+}
+
+it("warns when the model has never seen the topic", async () => {
+  (global.fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ predicted_score: 0.4, topic_recognized: false }) });
+  renderPanel();
+  submitIdea("gardening");
+  await waitFor(() => expect(screen.getByText("40%")).toBeInTheDocument());
+  expect(screen.getByRole("note")).toHaveTextContent(/hasn't seen this topic/i);
+});
+
+it("shows no topic warning when the topic is recognized or the field is absent", async () => {
+  (global.fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ predicted_score: 0.4, topic_recognized: true }) });
+  renderPanel();
+  submitIdea();
+  await waitFor(() => expect(screen.getByText("40%")).toBeInTheDocument());
+  expect(screen.queryByRole("note")).not.toBeInTheDocument();
+});
+
+it("clears the previous topic warning when scoring again", async () => {
+  (global.fetch as any)
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ predicted_score: 0.4, topic_recognized: false }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ predicted_score: 0.7, topic_recognized: true }) });
+  renderPanel();
+  submitIdea("gardening");
+  await waitFor(() => expect(screen.getByRole("note")).toBeInTheDocument());
+  submitIdea("transformation");
+  await waitFor(() => expect(screen.getByText("70%")).toBeInTheDocument());
+  expect(screen.queryByRole("note")).not.toBeInTheDocument();
+});
+

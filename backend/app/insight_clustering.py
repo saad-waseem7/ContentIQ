@@ -22,20 +22,18 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import insight_config as cfg
 from app import models
 
-# Cached by niche, invalidated by embedding COUNT, not a file mtime — this
-# data comes from Postgres, not a file. A changed count means new content
-# was ingested/embedded for this niche since the cache entry was built.
-# The DB query for the count is cheap; what's expensive and worth caching
-# is the KMeans sweep itself (up to 4 k-values x n_init=10 = up to 40 fits),
-# which otherwise reruns on every single /insights page load for every
-# user in the niche.
-_cluster_cache: dict[str, tuple[int, dict, Optional[pd.DataFrame]]] = {}
+# Cached by niche. The entry is valid only while BOTH inputs are unchanged: the number of
+# embedded posts in Postgres (new content was ingested) and a fingerprint of the feature rows
+# the cluster statistics are computed from (features.parquet was rebuilt). Checking costs one
+# COUNT query; the embeddings themselves are loaded only on a miss. What is worth caching is
+# the KMeans sweep (up to 4 k-values x n_init=10 = up to 40 fits).
+_cluster_cache: dict[str, tuple[tuple, dict, Optional[pd.DataFrame]]] = {}
 _cluster_cache_lock = threading.Lock()
 
 
@@ -43,6 +41,25 @@ def clear_cluster_cache() -> None:
     """Clear cached clusters so tests can exercise a fresh computation."""
     with _cluster_cache_lock:
         _cluster_cache.clear()
+
+
+def _count_niche_embeddings(db: Session, niche: str) -> int:
+    return db.execute(
+        select(func.count())
+        .select_from(models.Content)
+        .join(models.Channel, models.Content.channel_id == models.Channel.id)
+        .join(models.User, models.Channel.user_id == models.User.id)
+        .where(models.User.niche == niche)
+        .where(models.Content.caption_embedding.is_not(None))
+    ).scalar_one()
+
+
+def _feature_fingerprint(niche_df: pd.DataFrame) -> tuple:
+    """Cheap identity of the feature rows behind the cluster statistics."""
+    if niche_df.empty:
+        return (0, 0, 0.0)
+    ids = int(pd.util.hash_pandas_object(niche_df["content_id"], index=False).sum())
+    return (len(niche_df), ids, round(float(niche_df["performance_z"].sum()), 6))
 
 
 def _load_niche_embeddings(db: Session, niche: str) -> dict:
@@ -119,18 +136,18 @@ def compute_niche_clusters(embeddings_map: dict, niche_df_valid_with_topic: pd.D
 
 
 def load_and_compute_niche_clusters(db: Session, niche: str, niche_df_valid_with_topic: pd.DataFrame):
-    embeddings_map = _load_niche_embeddings(db, niche)
-    embedding_count = len(embeddings_map)
+    version = (_count_niche_embeddings(db, niche), _feature_fingerprint(niche_df_valid_with_topic))
 
     with _cluster_cache_lock:
         cached = _cluster_cache.get(niche)
-        if cached is not None and cached[0] == embedding_count:
+        if cached is not None and cached[0] == version:
             return cached[1], cached[2]
 
+    embeddings_map = _load_niche_embeddings(db, niche)
     result, label_df = compute_niche_clusters(embeddings_map, niche_df_valid_with_topic)
 
     with _cluster_cache_lock:
-        _cluster_cache[niche] = (embedding_count, result, label_df)
+        _cluster_cache[niche] = (version, result, label_df)
     return result, label_df
 
 

@@ -79,3 +79,27 @@ def test_ingest_rejects_metric_before_posted_at():
         },
     )
     assert resp.status_code == 422
+
+
+def test_metric_timezone_mismatch_is_a_validation_error_not_a_crash():
+    from datetime import datetime, timezone
+
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import ContentIngest
+
+    base = {"channel_id": "00000000-0000-0000-0000-000000000000", "content_type": "image"}
+    aware_post = datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc)
+    naive_post = datetime(2026, 1, 5, 12, 0)
+
+    # naive capture AFTER an aware post, and the reverse: valid, and no TypeError
+    ContentIngest(**base, posted_at=aware_post, metrics=[{"captured_at": datetime(2026, 1, 6)}])
+    ContentIngest(**base, posted_at=naive_post, metrics=[{"captured_at": datetime(2026, 1, 6, tzinfo=timezone.utc)}])
+
+    # still rejected when the capture really is earlier, regardless of tz awareness
+    with pytest.raises(ValidationError):
+        ContentIngest(**base, posted_at=aware_post, metrics=[{"captured_at": datetime(2026, 1, 1)}])
+    with pytest.raises(ValidationError):
+        ContentIngest(**base, posted_at=naive_post, metrics=[{"captured_at": datetime(2026, 1, 1, tzinfo=timezone.utc)}])
+

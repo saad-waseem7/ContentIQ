@@ -13,11 +13,11 @@ router = APIRouter()
 @router.post("/predict", response_model=PredictResponse)
 def predict_idea(user_id: str, payload: PredictRequest, db: Session = Depends(get_db)):
     try:
-        score = recommendation_service.score_custom_idea(db, user_id, payload.model_dump())
+        result = recommendation_service.score_custom_idea(db, user_id, payload.model_dump())
     except FeatureDataNotBuiltError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except ModelArtifactsNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except (UnknownUserError, recommendation_service.NoWinningContentError) as e:
         raise HTTPException(status_code=404, detail=str(e))
-    return PredictResponse(predicted_score=score)
+    return PredictResponse(predicted_score=result.predicted_score, topic_recognized=result.topic_recognized)

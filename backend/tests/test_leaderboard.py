@@ -170,3 +170,25 @@ def test_load_feature_table_reloads_after_file_changes(tmp_path, monkeypatch):
     df2 = leaderboard_service.load_feature_table(path2)
     assert len(df2) == 2
     assert df1 is not df2
+
+
+def test_leaderboard_skips_posts_whose_baseline_had_too_little_history(tmp_path):
+    user_id = str(uuid.uuid4())
+    rows = []
+    for i, (z, n_prior) in enumerate([(9.0, 3), (1.0, 40), (2.0, 12), (8.0, 9)]):
+        row = _make_row(user_id, f"c{i}", performance_z=z)
+        row["n_prior_in_group"] = n_prior
+        rows.append(row)
+    result = leaderboard_service.build_leaderboard(user_id, _write_parquet(tmp_path, rows))
+
+    assert [e["performance_z"] for e in result["leaderboard"]] == [2.0, 1.0]  # the 3- and 9-prior posts are not ranked
+    assert result["ranked_posts"] == 2
+    assert result["total_posts_in_history"] == 4
+
+
+def test_leaderboard_still_ranks_everything_scored_when_the_column_is_absent(tmp_path):
+    user_id = str(uuid.uuid4())
+    rows = [_make_row(user_id, f"c{i}", performance_z=z) for i, z in enumerate([0.5, 2.1])]
+    result = leaderboard_service.build_leaderboard(user_id, _write_parquet(tmp_path, rows))
+    assert result["ranked_posts"] == 2
+

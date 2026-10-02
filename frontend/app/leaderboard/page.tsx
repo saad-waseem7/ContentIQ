@@ -16,17 +16,32 @@ export default function LeaderboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setData(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    // Ignore responses that arrive after the selected user changed.
+    let cancelled = false;
     setLoading(true);
     setError(null);
     setData(null);
     getLeaderboard(userId)
-      .then(setData)
+      .then((d) => {
+        if (!cancelled) setData(d);
+      })
       .catch((e) => {
+        if (cancelled) return;
         const msg = e instanceof ApiError ? messageForStatus(e.status, e.message) : "Couldn't reach the server.";
         setError(msg);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [userId]);
 
   return (
@@ -41,6 +56,9 @@ export default function LeaderboardPage() {
         <>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">
             {data.ranked_posts} ranked of {data.total_posts_in_history} total posts · {humanLabel("niche", data.niche)}
+          </p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mb-3 -mt-2">
+            A post is ranked once enough earlier posts of the same format exist to form a reliable baseline.
           </p>
           <LeaderboardTable entries={data.leaderboard} />
         </>

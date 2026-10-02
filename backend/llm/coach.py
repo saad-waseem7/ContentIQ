@@ -7,11 +7,13 @@ Validates output against the SAME closed lists already enforced elsewhere
 
 import json
 import concurrent.futures
+import re
 import time
 
 from pydantic import BaseModel, ValidationError, field_validator
 
 from app.models import CONTENT_TYPES, HOOK_TYPES, PLATFORMS
+from features.topics import match_topic, normalize_topic
 from llm.base import LLMClient, LLMGenerationError
 
 MAX_ATTEMPTS = 2
@@ -93,35 +95,86 @@ class IdeaOutput(BaseModel):
         return v
 
 
+_NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _rationale_is_grounded(rationale: str, grounding_posts: list[dict]) -> bool:
+    """True if every number in the rationale is either a listed performance_z (at the
+    precision the rationale used) or a count of the listed posts. Anything else is a
+    statistic the prompt never provided."""
+    z_values = [float(p["performance_z"]) for p in grounding_posts]
+    for token in _NUMBER_PATTERN.findall(rationale):
+        decimals = len(token.split(".")[1]) if "." in token else 0
+        value = float(token)
+        matches_z = any(abs(round(z, decimals) - value) < 1e-9 for z in z_values)
+        is_count = decimals == 0 and 1 <= value <= len(grounding_posts)
+        if not (matches_z or is_count):
+            return False
+    return True
+
+
+def _fallback_rationale(grounding_posts: list[dict]) -> str:
+    best_z = max(float(p["performance_z"]) for p in grounding_posts)
+    return (
+        f"Your strongest post of this kind scored {best_z:.2f} standard deviations above "
+        "your own baseline, and this idea builds on that pattern."
+    )
+
+
 def _build_prompt(
-    niche: str, grounding_posts: list[dict], retry_note: str = "", directive: str = ""
+    niche: str,
+    grounding_posts: list[dict],
+    retry_note: str = "",
+    directive: str = "",
+    creator_profile: dict | None = None,
 ) -> str:
+    profile = creator_profile or {}
+    platform = profile.get("platform")
+    formats = profile.get("content_types") or []
+    topics = profile.get("topics") or []
+
     posts_summary = "\n".join(
         f"- {p['content_type']} with {p['hook_type']} hook on {p['topic_tags']}, "
         f"performance_z={p['performance_z']:.2f} standard deviations above this creator's own baseline"
         for p in grounding_posts
     )
     directive_block = f"\n\n{directive}" if directive else ""
-    return f"""You are a content strategy coach for a creator in the "{niche}" niche.
+    platform_line = f"\nThis creator publishes on {platform}." if platform else ""
+    platform_key = (
+        f"platform (must be exactly: {platform})"
+        if platform
+        else "platform (one of: youtube, youtube_shorts, instagram, tiktok, x, linkedin)"
+    )
+    format_hint = f" This creator already uses: {', '.join(formats)}." if formats else ""
+    topic_key = (
+        f"primary_topic_tag (use one of this creator's existing topics, written exactly as shown: {', '.join(topics)})"
+        if topics
+        else "primary_topic_tag (a short topic string)"
+    )
+    return f"""You are a content strategy coach for a creator in the "{niche}" niche.{platform_line}
 
 This creator's real top-performing posts, ranked by how far above their OWN personal baseline they scored:
 {posts_summary}
 
 Generate exactly ONE new content idea grounded in these patterns.{directive_block} Respond with ONLY a JSON object with these exact keys:
 hook_type (one of: question, bold_claim, listicle, story, none)
-content_type (one of: short_video, long_video, image, carousel, text)
-platform (one of: youtube, youtube_shorts, instagram, tiktok, x, linkedin)
-primary_topic_tag (a short topic string)
+content_type (one of: short_video, long_video, image, carousel, text){format_hint}
+{platform_key}
+{topic_key}
 duration_sec (integer seconds if video, otherwise null)
 best_posting_window (short human-readable time window)
 sample_caption (1-2 sentence sample caption/title)
-rationale (ONE sentence, must cite a real number from the posts listed above — never invent a statistic)
+rationale (ONE sentence, must cite a performance_z value exactly as listed above — never invent a statistic)
 
 Stay strictly within this creator's niche and voice.{retry_note}"""
 
 
 def generate_idea(
-    llm_client: LLMClient, niche: str, grounding_posts: list[dict], directive: str = ""
+    llm_client: LLMClient,
+    niche: str,
+    grounding_posts: list[dict],
+    directive: str = "",
+    creator_profile: dict | None = None,
 ) -> dict:
     last_error = None
     for attempt in range(MAX_ATTEMPTS):
@@ -130,25 +183,43 @@ def generate_idea(
             if attempt
             else ""
         )
-        prompt = _build_prompt(niche, grounding_posts, retry_note, directive)
+        prompt = _build_prompt(niche, grounding_posts, retry_note, directive, creator_profile)
         try:
             raw = llm_client.generate(prompt)
         except LLMGenerationError as e:
             last_error = e
             continue
         try:
-            idea = IdeaOutput(**json.loads(raw))
-            return idea.model_dump()
-        except (json.JSONDecodeError, ValidationError) as e:
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict):
+                raise ValueError(f"expected a JSON object, got {type(parsed).__name__}")
+            idea = IdeaOutput(**parsed).model_dump()
+        except ValueError as e:  # JSONDecodeError and pydantic's ValidationError are both ValueErrors
             last_error = e
             continue
+        return _finalize_idea(idea, grounding_posts, creator_profile)
     raise IdeaGenerationError(
         f"LLM failed to produce a valid idea after {MAX_ATTEMPTS} attempts: {last_error}"
     )
 
 
+def _finalize_idea(idea: dict, grounding_posts: list[dict], creator_profile: dict | None) -> dict:
+    """Post-validation fixes that need no extra LLM call."""
+    topics = (creator_profile or {}).get("topics") or []
+    idea["primary_topic_tag"] = match_topic(idea["primary_topic_tag"], topics) or normalize_topic(
+        idea["primary_topic_tag"]
+    )
+    if grounding_posts and not _rationale_is_grounded(idea["rationale"], grounding_posts):
+        idea["rationale"] = _fallback_rationale(grounding_posts)
+    return idea
+
+
 def generate_ideas(
-    llm_client: LLMClient, niche: str, grounding_posts: list[dict], n: int
+    llm_client: LLMClient,
+    niche: str,
+    grounding_posts: list[dict],
+    n: int,
+    creator_profile: dict | None = None,
 ) -> list[dict]:
     """Generate candidates concurrently; each retains generate_idea's validation and retries.
 
@@ -163,7 +234,7 @@ def generate_ideas(
     with concurrent.futures.ThreadPoolExecutor(max_workers=n) as executor:
         future_to_index = {
             executor.submit(
-                generate_idea, llm_client, niche, grounding_posts, directives[i]
+                generate_idea, llm_client, niche, grounding_posts, directives[i], creator_profile
             ): i
             for i in range(n)
         }

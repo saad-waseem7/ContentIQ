@@ -7,6 +7,7 @@ still uses the current time because it describes actual posting recency.
 """
 import uuid
 from datetime import datetime, timezone
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -15,14 +16,20 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.leaderboard_service import get_user_feature_rows
-from features.config import RECENT_POSTS_WINDOW
+from features.config import MIN_PRIOR_POSTS_FOR_RANKING, RECENT_POSTS_WINDOW
 from features.embeddings import embed_texts
 from llm.base import LLMClient
 from llm.coach import generate_ideas
-from ml.idea_scoring import score_idea
+from ml.idea_scoring import score_idea, topic_is_known
 
 GROUNDING_TOP_K = 5
 N_CANDIDATES = 3
+PROFILE_MAX_TOPICS = 25
+
+
+class CustomIdeaScore(NamedTuple):
+    predicted_score: float
+    topic_recognized: bool  # False: the model has never seen this topic, so it was scored as missing
 
 
 class NoWinningContentError(Exception):
@@ -84,6 +91,30 @@ def _compute_best_posting_time(winners_df: pd.DataFrame, fallback_hour: int, fal
     best_weekday = int(weekday_mode.iloc[0]) if not weekday_mode.empty else fallback_weekday
     return best_hour, best_weekday
 
+def _select_grounding_posts(winners_df: pd.DataFrame) -> pd.DataFrame:
+    """Top winners by performance_z, preferring posts whose baseline had enough history.
+
+    Early posts are scored against only a few earlier posts, which inflates their z-scores,
+    so they are used only to fill remaining slots.
+    """
+    ranked = winners_df
+    if "n_prior_in_group" in winners_df.columns:  # absent in feature tables built before this column existed
+        ranked = winners_df.assign(_deep=winners_df["n_prior_in_group"] >= MIN_PRIOR_POSTS_FOR_RANKING)
+        ranked = ranked.sort_values(["_deep", "performance_z"], ascending=[False, False]).drop(columns="_deep")
+        return ranked.head(GROUNDING_TOP_K)
+    return ranked.sort_values("performance_z", ascending=False).head(GROUNDING_TOP_K)
+
+
+def _build_creator_profile(user_df: pd.DataFrame) -> dict:
+    """The creator's own platform, formats and topics, so the LLM proposes ideas that can be
+    scored against data the model has actually seen."""
+    platform = user_df["platform"].mode().iloc[0]
+    formats = user_df.loc[user_df["platform"] == platform, "content_type"].value_counts().index.tolist()
+    primary_topics = [t[0] for t in user_df["topic_tags"] if t is not None and len(t) > 0]
+    topics = pd.Series(primary_topics, dtype=object).value_counts().index.tolist()[:PROFILE_MAX_TOPICS]
+    return {"platform": platform, "content_types": formats, "topics": topics}
+
+
 def _build_base_user_context(db, user_df, winners_df) -> dict:
     """Fields that do NOT depend on which specific idea is being scored —
     computed once per request, not once per candidate."""
@@ -103,9 +134,14 @@ def _build_base_user_context(db, user_df, winners_df) -> dict:
         fallback_weekday=planned_posted_at.weekday(),
     )
 
+    hashtag_count = None
+    if "hashtag_count" in user_df.columns and user_df["hashtag_count"].notna().any():
+        hashtag_count = float(user_df["hashtag_count"].median())
+
     return {
         "niche": user_df["niche"].iloc[0],
         "follower_count": most_recent["follower_count"],
+        "hashtag_count": hashtag_count,
         "days_since_last_post": days_since_last_post,
         "is_first_post_for_user": False,
         "planned_posted_at": planned_posted_at,
@@ -153,10 +189,16 @@ def generate_recommendation(db: Session, user_id: str, llm_client: LLMClient) ->
     # and features.parquet can list users that no longer exist in Postgres.
     user_uuid = _require_user(db, user_id)
 
-    top_k = winners_df.sort_values("performance_z", ascending=False).head(GROUNDING_TOP_K)
+    top_k = _select_grounding_posts(winners_df)
     niche = user_df["niche"].iloc[0]
+    profile = _build_creator_profile(user_df)
 
-    ideas = generate_ideas(llm_client, niche=niche, grounding_posts=top_k.to_dict("records"), n=N_CANDIDATES)
+    ideas = generate_ideas(
+        llm_client, niche=niche, grounding_posts=top_k.to_dict("records"), n=N_CANDIDATES, creator_profile=profile
+    )
+    for idea in ideas:
+        # The LLM only sees the platform as an instruction; scoring must use the creator's real one.
+        idea["platform"] = profile["platform"]
 
     base_context = _build_base_user_context(db, user_df, winners_df)
     caption_embeddings = embed_texts([idea["sample_caption"] for idea in ideas])
@@ -186,7 +228,7 @@ def generate_recommendation(db: Session, user_id: str, llm_client: LLMClient) ->
     return rec
 
 
-def score_custom_idea(db: Session, user_id: str, idea: dict) -> float:
+def score_custom_idea(db: Session, user_id: str, idea: dict) -> CustomIdeaScore:
     """Scores a user-supplied idea directly, skipping LLM generation. Reuses
     the exact same context-building and scoring path generate_recommendation
     uses for each candidate — only the source of `idea` differs. Not
@@ -199,7 +241,8 @@ def score_custom_idea(db: Session, user_id: str, idea: dict) -> float:
     base_context = _build_base_user_context(db, user_df, winners_df)
     caption_embedding = np.array(embed_texts([idea["sample_caption"]])[0])
     ctx = _complete_context_for_idea(base_context, idea, caption_embedding)
-    return score_idea(idea, ctx)
+    score = score_idea(idea, ctx)
+    return CustomIdeaScore(score, topic_is_known(idea["primary_topic_tag"]))
 
 
 def get_recommendation_history(db: Session, user_id: str) -> list[models.Recommendation]:

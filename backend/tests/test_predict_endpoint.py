@@ -108,3 +108,39 @@ def test_predict_returns_score_for_valid_request(tmp_path, monkeypatch):
 
     assert resp.status_code == 200
     assert resp.json()["predicted_score"] == pytest.approx(0.7)
+    assert resp.json()["topic_recognized"] is True
+
+
+def _setup_predict_artifacts(tmp_path, monkeypatch) -> str:
+    user_id = str(uuid.uuid4())
+    db = SessionLocal()
+    db.add(db_models.User(id=uuid.UUID(user_id), niche="fitness", goal="test"))
+    db.commit()
+    db.close()
+
+    rows = [_make_row(user_id, str(uuid.uuid4()), performance_z=2.0, label=True) for _ in range(5)]
+    monkeypatch.setattr(leaderboard_service, "FEATURES_PATH", _write_features(tmp_path, rows))
+    joblib.dump(_StubClassifierForPredictTest(), tmp_path / "classifier.joblib")
+    (tmp_path / "category_levels.json").write_text(json_module.dumps({
+        "content_type": ["carousel"], "hook_type": ["story"], "platform": ["instagram"],
+        "niche": ["fitness"], "duration_bucket": ["not_applicable"], "follower_tier": ["5k_to_50k"],
+        "primary_topic_tag": ["transformation", "quick_recipes"],
+    }))
+    monkeypatch.setattr(idea_scoring, "MODEL_PATH", tmp_path / "classifier.joblib")
+    monkeypatch.setattr(idea_scoring, "CATEGORY_LEVELS_PATH", tmp_path / "category_levels.json")
+    return user_id
+
+
+@pytest.mark.parametrize("typed", ["Transformation", "Quick Recipes", "quick recipes"])
+def test_predict_recognizes_a_topic_typed_the_way_the_ui_displays_it(tmp_path, monkeypatch, typed):
+    user_id = _setup_predict_artifacts(tmp_path, monkeypatch)
+    resp = TestClient(app).post(f"/predict?user_id={user_id}", json=dict(VALID_PAYLOAD, primary_topic_tag=typed))
+    assert resp.status_code == 200
+    assert resp.json()["topic_recognized"] is True
+
+
+def test_predict_flags_a_topic_the_model_has_never_seen(tmp_path, monkeypatch):
+    user_id = _setup_predict_artifacts(tmp_path, monkeypatch)
+    resp = TestClient(app).post(f"/predict?user_id={user_id}", json=dict(VALID_PAYLOAD, primary_topic_tag="gardening"))
+    assert resp.status_code == 200
+    assert resp.json()["topic_recognized"] is False

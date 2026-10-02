@@ -74,3 +74,19 @@ def test_days_since_last_post_uses_only_prior_post():
 
     assert pd.isna(features.loc[0, "days_since_last_post"])
     assert features.loc[1, "days_since_last_post"] == 1.0
+
+
+def test_n_prior_in_group_counts_only_strictly_earlier_posts_in_the_same_group():
+    df = _build_scenario(last_post_likes=52)
+    features = compute_feature_table(df, embeddings={}).sort_values("posted_at").reset_index(drop=True)
+    assert list(features["n_prior_in_group"]) == [0, 1, 2, 3, 4]
+
+
+def test_n_prior_in_group_is_independent_across_groups():
+    user_id = uuid.uuid4()
+    rows = [_make_post(user_id, "instagram", "carousel", d, 50, 5, 2, 10, 1000) for d in range(3)]
+    rows += [_make_post(user_id, "instagram", "image", d + 10, 50, 5, 2, 10, 1000) for d in range(2)]
+    features = compute_feature_table(pd.DataFrame(rows), embeddings={})
+    by_type = {ct: sorted(g["n_prior_in_group"]) for ct, g in features.groupby("content_type")}
+    assert by_type == {"carousel": [0, 1, 2], "image": [0, 1]}
+

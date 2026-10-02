@@ -27,17 +27,32 @@ export default function HistoryPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setData(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    // Ignore responses that arrive after the selected user changed.
+    let cancelled = false;
     setLoading(true);
     setError(null);
     setData(null);
     getRecommendationHistory(userId)
-      .then(setData)
+      .then((d) => {
+        if (!cancelled) setData(d);
+      })
       .catch((e) => {
+        if (cancelled) return;
         const msg = e instanceof ApiError ? messageForStatus(e.status, e.message) : "Couldn't reach the server.";
         setError(msg);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [userId]);
 
   return (

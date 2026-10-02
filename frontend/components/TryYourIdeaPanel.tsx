@@ -22,6 +22,7 @@ export default function TryYourIdeaPanel() {
   const [topic, setTopic] = useState("");
   const [caption, setCaption] = useState("");
   const [score, setScore] = useState<number | null>(null);
+  const [topicRecognized, setTopicRecognized] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,8 +32,12 @@ export default function TryYourIdeaPanel() {
     setLoading(true);
     setError(null);
     setScore(null);
+    setTopicRecognized(true);
     predictIdea(userId, { content_type: contentType, hook_type: hookType, platform, primary_topic_tag: topic.trim(), sample_caption: caption.trim() })
-      .then((r) => setScore(r.predicted_score))
+      .then((r) => {
+        setScore(r.predicted_score);
+        setTopicRecognized(r.topic_recognized !== false);
+      })
       .catch((e) => setError(e instanceof ApiError ? messageForStatus(e.status, e.message) : "Couldn't reach the server."))
       .finally(() => setLoading(false));
   }
@@ -76,6 +81,11 @@ export default function TryYourIdeaPanel() {
           <span className="text-xl font-semibold text-slate-900 dark:text-slate-100">{(score * 100).toFixed(0)}%</span>
           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${scoreBadge(score).classes}`}>{scoreBadge(score).text}</span>
         </div>
+      )}
+      {score !== null && !topicRecognized && (
+        <p className="text-xs text-amber-700 dark:text-amber-400 mt-2" role="note">
+          The model hasn't seen this topic before, so the score ignores it. Try a topic this creator has already posted about.
+        </p>
       )}
     </Card>
   );

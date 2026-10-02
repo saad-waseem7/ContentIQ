@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { generateRecommendation, submitFeedback, ApiError } from "@/lib/api";
 import { useUserId } from "@/lib/UserContext";
 import { useActiveRecommendation } from "@/lib/RecommendationContext";
@@ -17,24 +17,50 @@ export default function RecommendPage() {
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Selecting a different user resets this page's transient state, and requests that were
+  // started for the previous user must not touch it when they finish.
+  const selectedUserRef = useRef(userId);
+  useEffect(() => {
+    selectedUserRef.current = userId;
+    setLoading(false);
+    setFeedbackPending(false);
+    setError(null);
+  }, [userId]);
+
   function handleGenerate() {
     if (!userId) return;
+    const requestedFor = userId;
+    const stillSelected = () => selectedUserRef.current === requestedFor;
     setLoading(true);
     setError(null);
-    generateRecommendation(userId)
-      .then((rec) => setActiveRecommendation(rec, userId))
-      .catch((e) => setError(e instanceof ApiError ? messageForStatus(e.status, e.message) : "Couldn't reach the server."))
-      .finally(() => setLoading(false));
+    generateRecommendation(requestedFor)
+      .then((rec) => {
+        if (stillSelected()) setActiveRecommendation(rec, requestedFor);
+      })
+      .catch((e) => {
+        if (stillSelected()) setError(e instanceof ApiError ? messageForStatus(e.status, e.message) : "Couldn't reach the server.");
+      })
+      .finally(() => {
+        if (stillSelected()) setLoading(false);
+      });
   }
 
   function handleFeedback(status: "actioned" | "dismissed") {
     if (!activeRecommendation) return;
+    const requestedFor = userId;
+    const stillSelected = () => selectedUserRef.current === requestedFor;
     setFeedbackPending(true);
     setError(null);
     submitFeedback(activeRecommendation.id, status)
-      .then(updateActiveRecommendationStatus)
-      .catch((e) => setError(e instanceof ApiError ? messageForStatus(e.status, e.message) : "Couldn't reach the server."))
-      .finally(() => setFeedbackPending(false));
+      .then((rec) => {
+        if (stillSelected()) updateActiveRecommendationStatus(rec);
+      })
+      .catch((e) => {
+        if (stillSelected()) setError(e instanceof ApiError ? messageForStatus(e.status, e.message) : "Couldn't reach the server.");
+      })
+      .finally(() => {
+        if (stillSelected()) setFeedbackPending(false);
+      });
   }
 
   return (
@@ -71,7 +97,7 @@ export default function RecommendPage() {
               />
             </div>
           )}
-          <TryYourIdeaPanel />
+          <TryYourIdeaPanel key={userId} />
         </>
       )}
     </div>

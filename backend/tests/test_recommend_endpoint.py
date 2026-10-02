@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from app import leaderboard_service
 from app.main import app
+from llm.mock_client import MockLLMClient
 from ml import idea_scoring
 
 
@@ -207,3 +208,53 @@ def test_feedback_404_on_malformed_recommendation_id():
     client = TestClient(app)
     resp = client.post("/recommendations/not-a-uuid/feedback", json={"status": "dismissed"})
     assert resp.status_code == 404
+
+
+class _PlatformRecordingClassifier:
+    seen_platforms: list = []
+
+    def predict_proba(self, X):
+        _PlatformRecordingClassifier.seen_platforms.append(X["platform"].iloc[0])
+        return np.array([[0.5, 0.5]])
+
+
+class _PromptRecordingMock(MockLLMClient):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.prompts = []
+
+    def generate(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return super().generate(prompt)
+
+
+def test_recommend_scores_with_the_creators_platform_and_tells_the_llm_about_it(tmp_path, monkeypatch):
+    import json as json_module
+    import joblib
+    import app.routers.recommend as recommend_router
+
+    user_id = str(uuid.uuid4())
+    _create_db_user(user_id)
+    rows = [_make_row(user_id, str(uuid.uuid4()), performance_z=2.0, label=True) for _ in range(5)]  # instagram
+    monkeypatch.setattr(leaderboard_service, "FEATURES_PATH", _write_features(tmp_path, rows))
+
+    _PlatformRecordingClassifier.seen_platforms = []
+    joblib.dump(_PlatformRecordingClassifier(), tmp_path / "classifier.joblib")
+    (tmp_path / "category_levels.json").write_text(json_module.dumps({
+        "content_type": ["carousel"], "hook_type": ["story"], "platform": ["instagram", "tiktok"],
+        "niche": ["fitness"], "duration_bucket": ["not_applicable"], "follower_tier": ["5k_to_50k"],
+        "primary_topic_tag": ["transformation"],
+    }))
+    monkeypatch.setattr(idea_scoring, "MODEL_PATH", tmp_path / "classifier.joblib")
+    monkeypatch.setattr(idea_scoring, "CATEGORY_LEVELS_PATH", tmp_path / "category_levels.json")
+
+    llm = _PromptRecordingMock(response_overrides={"platform": "tiktok"})  # the LLM ignores the instruction
+    monkeypatch.setattr(recommend_router, "_llm_client", llm)
+
+    resp = TestClient(app).post(f"/recommend?user_id={user_id}")
+
+    assert resp.status_code == 201
+    assert all("publishes on instagram" in p for p in llm.prompts)
+    assert len(_PlatformRecordingClassifier.seen_platforms) == 3
+    assert set(_PlatformRecordingClassifier.seen_platforms) == {"instagram"}  # never the LLM's tiktok
+
