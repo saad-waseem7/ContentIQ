@@ -1,15 +1,15 @@
 # ContentIQ
 
-**A personalized content performance coach.** ContentIQ learns what works for each creator by comparing posts with that creator's own history, then uses the resulting model to generate, rank, and score new content ideas.
+**A personalized content performance coach.** ContentIQ compares each post with its creator's own history, then uses those patterns to evaluate content and suggest new ideas. It is built around synthetic data and is a working prototype, not a connected social publishing service.
 
 The project is built end to end: synthetic data generation, leakage-safe feature engineering, ML training with SHAP-based interpretability, LLM-grounded recommendations, an Insight Engine, and a full-stack web application running in containers.
 
 ## What it does
 
 - **Content Performance Leaderboard:** ranks posts relative to the creator's own baseline within platform and content type.
-- **Insights:** shows personal patterns across content type, hook, topic, and posting time; non-causal trends; niche-population comparisons; and niche-scoped topic clusters built with KMeans over caption embeddings.
-- **Daily Recommendation:** generates three strategically distinct candidates, scores each with the trained classifier, and saves the highest-scoring idea with a rationale grounded in the creator's data.
-- **Try Your Own Idea:** a panel on the recommendation page scores a creator-authored idea through the same model without saving it as a recommendation.
+- **Insights:** shows personal hook, topic, and posting-time patterns, descriptive trends, monthly performance, niche comparisons, and topic clusters. Sample-size checks keep weak evidence from being presented as a firm finding.
+- **Daily Recommendation:** creates three distinct candidates concurrently, grounds them in the creator's strongest posts, scores them with the trained classifier, and saves the top candidate.
+- **Try Your Own Idea:** scores a creator-authored idea through the same model without saving it. The response notes when the topic is new to the model.
 - **Recommendation feedback:** creators can mark recommendations as `actioned` or `dismissed`.
 - **Recommendation History:** lists saved recommendations and their feedback status, newest first.
 
@@ -36,7 +36,7 @@ Synthetic data generator --POST /ingest--> FastAPI REST API
 Next.js frontend <---------------- REST/JSON ----------------> FastAPI
 ```
 
-The API, frontend, PostgreSQL, and MLflow run through Docker Compose. Database migrations, synthetic data generation, and model preparation are separate commands.
+The API, frontend, PostgreSQL, and MLflow run through Docker Compose. Database migrations, synthetic data generation, and model preparation are separate steps.
 
 ## Technology
 
@@ -52,31 +52,28 @@ The API, frontend, PostgreSQL, and MLflow run through Docker Compose. Database m
 | Testing | pytest, Vitest, React Testing Library |
 | CI and infrastructure | GitHub Actions, Docker Compose |
 
-## Engineering highlights
+## How it works
 
-- **Leakage-safe feature pipeline:** training features use an expanding window of strictly prior posts. Dedicated tests verify that future metrics cannot affect an earlier post's features or label.
-- **Planted-signal validation:** the synthetic dataset injects niche-specific `(hook_type, topic)` effects. SHAP analysis compares matching and non-matching rows within each niche to verify that the model recovers the signal.
-- **Model evaluation:** the classifier is evaluated with a temporal per-user split and compared against a content-type-average baseline. The training run also reports regressor performance and checks for recovery of the planted signal.
-- **Diverse recommendation candidates:** three LLM calls run concurrently, each with a distinct safe, alternative, or experimental strategy directive. Candidates are independently featureized and scored before selection.
-- **Stable recommendation scoring:** posting-time features use the user's historically best-performing hour and weekday, so scores do not change just because an idea was requested at a different time.
-- **Provider-agnostic LLM integration:** the recommendation pipeline depends on `LLMClient`, not a vendor SDK. The deterministic mock supports full local testing, while Gemini can be enabled through configuration.
-- **Structured LLM guardrails:** responses must be valid JSON using the backend's supported platform, content-type, and hook-type values. Invalid output is retried, and rationales must contain a numeric citation from the grounding data.
-- **Reproducible experiments:** MLflow records the data snapshot hash, parameters, metrics, trained models, feature importance, and SHAP artifacts.
-- **Evaluation tools:** the PCA-on-embeddings experiment is available separately and is not part of the serving pipeline.
+- Training features use only information available before each post. Tests check that later posts cannot leak into earlier features or labels.
+- Performance is compared with each creator's prior history within platform and content type. Insights use validated rows, clear sample thresholds, and descriptive rather than causal language.
+- Recommendation topics are normalized for model scoring. Prompts use the creator's observed platform, formats, and topics, and generated rationales are checked against the cited posts.
+- Niche-level topic clusters are cached and refreshed when embeddings or feature data change.
+- Candidate posting-time features use the creator's historically strongest posting time, so a score does not depend on when a request was made.
+- Training reports classifier and regressor metrics, baseline comparisons, and SHAP checks. Model and feature updates are written atomically to avoid exposing partial files during a rebuild.
 
 ## Project structure
 
 ```text
 backend/
   app/          FastAPI routes, services, ORM models, and Insight Engine
-  features/     Leakage-safe feature engineering, embeddings, and baselines
-  ml/           Model training, evaluation, SHAP, inference, and idea scoring
+  features/     Leakage-safe feature engineering, embeddings, topic normalization, and baselines
+  ml/           Model training, evaluation, SHAP, inference, and safe artifact writes
   llm/          Provider-agnostic client, prompt construction, and guardrails
   migrations/   Alembic schema migrations
   scripts/      Feature, embedding, baseline, training, and evaluation jobs
   tests/        Backend unit and integration tests
 synthetic_data/ Synthetic creator, content, metric, and planted-signal generator
-frontend/       Next.js app, components, and shared API/state utilities
+frontend/       Next.js screens, components, API helpers, and shared user/theme state
 .github/        CI workflows
 docker-compose.yml
 ```
@@ -88,8 +85,9 @@ docker-compose.yml
 - Docker and Docker Compose
 - Git
 - Python 3.11 or later for the synthetic data generator
+- Node.js 20 or later only if running the frontend outside Docker
 
-The frontend, backend, PostgreSQL, and MLflow services run in Docker. Node.js is only needed when working on the frontend outside its container.
+The frontend, backend, PostgreSQL, and MLflow services run in Docker.
 
 On Linux, check whether a native PostgreSQL installation is already using port 5432:
 
@@ -112,6 +110,8 @@ docker compose exec api alembic upgrade head
 On Windows, use `Copy-Item .env.example .env` instead of `cp`.
 
 The root `.env` supplies settings to Docker Compose and the API container. It is local configuration and is not committed. The default LLM provider is `mock` and needs no API key. To use Gemini, see [LLM configuration](#llm-configuration).
+
+The root template is for the Docker Compose stack. The tracked `backend/.env.example` and `frontend/.env.local.example` show optional per-service settings. The frontend defaults to the local API address and does not need a separate environment file for the Compose setup.
 
 The Compose stack starts all services together:
 
@@ -147,7 +147,7 @@ docker compose exec api python scripts/build_features.py
 docker compose exec api python scripts/train_model.py
 ```
 
-Run the full pipeline before using the leaderboard, insights, recommendation, and prediction flows. Repeat it after creating a fresh database or changing the ingested data. The trained classifier scores recommendations and custom ideas.
+Run the full pipeline before using the leaderboard, insights, recommendation, and prediction flows. Repeat it after creating a fresh database or changing ingested data. The trained classifier scores recommendations and custom ideas.
 
 Optional commands:
 
@@ -186,24 +186,6 @@ The model name is configurable. Obtain keys from [Google AI Studio](https://aist
 
 Every temporal feature and baseline used for a post is computed without looking beyond that post's publication time. Posts without enough prior history remain in the dataset but cannot receive a reliable relative-performance label or leaderboard rank.
 
-## Environment variables
-
-The root `.env` file is based on [.env.example](.env.example):
-
-| Variable | Purpose |
-| --- | --- |
-| `POSTGRES_USER` | PostgreSQL username |
-| `POSTGRES_PASSWORD` | PostgreSQL password |
-| `POSTGRES_DB` | PostgreSQL database name |
-| `POSTGRES_PORT` | Host port mapped to PostgreSQL |
-| `DATABASE_URL` | SQLAlchemy database URL |
-| `MLFLOW_TRACKING_URI` | MLflow tracking endpoint |
-| `LLM_PROVIDER` | `mock` by default; use `gemini` for Gemini |
-| `GEMINI_API_KEY` | Required when Gemini is selected |
-| `GEMINI_MODEL` | Configurable Gemini model name |
-
-The frontend uses `NEXT_PUBLIC_API_BASE_URL`, defaulting to `http://localhost:8000`, and optionally `NEXT_PUBLIC_DEFAULT_USER_ID`. The Docker Compose frontend already uses the default API URL.
-
 ## API overview
 
 Full request and response schemas are available in Swagger at http://localhost:8000/docs.
@@ -216,10 +198,10 @@ Full request and response schemas are available in Swagger at http://localhost:8
 | `GET` | `/insights?user_id={uuid}` | Return personal, trend, niche, and topic-cluster insights |
 | `POST` | `/recommend?user_id={uuid}` | Generate, score, and persist the best recommendation candidate |
 | `GET` | `/recommendations?user_id={uuid}` | Return the user's recommendation history, newest first |
-| `POST` | `/predict?user_id={uuid}` | Score a user-authored idea without persisting it |
+| `POST` | `/predict?user_id={uuid}` | Score a user-authored idea and report whether its topic is known |
 | `POST` | `/recommendations/{id}/feedback` | Mark a recommendation `actioned` or `dismissed` |
 
-Build features before using the leaderboard or insights. Recommendations and custom prediction also need the trained classifier and enough top-performing history for the selected user. Ingestion validates supported platforms, content types, hook types, parent IDs, and metric timestamps.
+Build features before using the leaderboard or insights. Recommendations and custom prediction also need the trained classifier and enough top-performing history for the selected user. Invalid or unknown user IDs return a not-found response before recommendation generation can make an LLM call. Ingestion validates supported platforms, content types, hook types, parent IDs, and metric timestamps.
 
 ## Frontend
 
@@ -228,11 +210,11 @@ The frontend is included in Docker Compose and is available at http://localhost:
 Current screens include:
 
 - **Leaderboard:** relative-performance ranking for a manually entered user UUID.
-- **Insights:** personal patterns, topic performance, trends, niche comparison, and topic clusters.
+- **Insights:** personal hook, topic, and posting-time patterns, monthly trends, niche comparison, and topic clusters.
 - **Daily Recommendation:** three-candidate generation behind the API, display of the selected idea and predicted score, plus feedback actions.
 - **Recommendation History:** previously generated recommendations with their predicted scores and statuses.
 - **Try Your Own Idea:** on-demand scoring on the recommendation page, without saving the idea.
-- Loading, empty, error, responsive, and dark-mode states.
+- Loading, empty, and error states, responsive layouts, dark mode, and protection against stale results when switching users.
 
 Run frontend checks in the running container:
 
