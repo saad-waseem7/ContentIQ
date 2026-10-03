@@ -59,6 +59,7 @@ The API, frontend, PostgreSQL, and MLflow run through Docker Compose. Database m
 - Recommendation topics are normalized for model scoring. Prompts use the creator's observed platform, formats, and topics, and generated rationales are checked against the cited posts.
 - Niche-level topic clusters are cached and refreshed when embeddings or feature data change.
 - Candidate posting-time features use the creator's historically strongest posting time, so a score does not depend on when a request was made.
+- Gemini calls use a configurable deadline and app-managed retries. Ingestion and prediction requests also enforce text and list-size limits.
 - Training reports classifier and regressor metrics, baseline comparisons, and SHAP checks. Model and feature updates are written atomically to avoid exposing partial files during a rebuild.
 
 ## Project structure
@@ -168,9 +169,10 @@ To use Google Gemini, set these values in the root `.env` file and restart the A
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=your_google_ai_studio_key
 GEMINI_MODEL=gemini-3.6-flash
+GEMINI_TIMEOUT_SEC=30
 ```
 
-The model name is configurable. Obtain keys from [Google AI Studio](https://aistudio.google.com/apikey), and never commit the key to the repository. Gemini failures, blocked responses, invalid JSON, and schema violations are surfaced through the recommendation API's error handling.
+The model name and request timeout are configurable. Gemini requests default to a 30-second timeout, and the application controls retries. Obtain keys from [Google AI Studio](https://aistudio.google.com/apikey), and never commit the key to the repository. Provider failures, blocked responses, invalid JSON, and schema violations are surfaced through the recommendation API's error handling.
 
 ## Data and model pipeline
 
@@ -200,7 +202,7 @@ Full request and response schemas are available in Swagger at http://localhost:8
 | `POST` | `/predict?user_id={uuid}` | Score a user-authored idea and report whether its topic is known |
 | `POST` | `/recommendations/{id}/feedback` | Mark a recommendation `actioned` or `dismissed` |
 
-Build features before using the leaderboard or insights. Recommendations and custom prediction also need the trained classifier and enough top-performing history for the selected user. Invalid or unknown user IDs return a not-found response before recommendation generation can make an LLM call. Ingestion validates supported platforms, content types, hook types, parent IDs, and metric timestamps.
+Build features before using the leaderboard or insights. Recommendations and custom prediction also need the trained classifier and enough top-performing history for the selected user. Invalid or unknown IDs return a not-found response before recommendation generation can make an LLM call. Ingestion validates supported categories, parent IDs, and metric timestamps. Text fields have explicit limits, including 5,000 characters for captions, 300 for titles, and up to 100 topic tags or hashtags per post. Oversized requests are rejected with HTTP 422.
 
 ## Frontend
 
@@ -229,7 +231,7 @@ docker compose exec api pytest -v
 docker compose exec frontend npm test
 ```
 
-The backend suite covers ingestion, temporal splitting, feature leakage, embeddings, clustering, insights, model scoring, leaderboard behavior, recommendation selection, LLM validation, and API error handling. GitHub Actions runs the backend tests against PostgreSQL with pgvector, then runs frontend tests and a production build. See [.github/workflows/ci.yaml](.github/workflows/ci.yaml).
+The backend suite covers ingestion limits, temporal splitting, feature leakage, embeddings, clustering, insights, model scoring, recommendation selection, LLM timeouts and validation, and API errors. GitHub Actions runs the backend tests against PostgreSQL with pgvector, then runs frontend tests and a production build. See [.github/workflows/ci.yaml](.github/workflows/ci.yaml).
 
 The training pipeline evaluates the classifier against a content-type baseline, reports regressor performance, and checks SHAP values for recovery of the planted signal. Results are recorded in MLflow and depend on the generated data and training configuration.
 
