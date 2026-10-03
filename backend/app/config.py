@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     llm_provider: str = "mock"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.6-flash"
+    gemini_timeout_sec: float = 30.0
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

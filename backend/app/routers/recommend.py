@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 
 from app import recommendation_service
@@ -22,7 +24,7 @@ def _to_response(rec) -> RecommendationResponse:
 
 
 @router.post("/recommend", response_model=RecommendationResponse, status_code=201)
-def create_recommendation(user_id: str, db: Session = Depends(get_db)):
+def create_recommendation(user_id: Annotated[str, Query(max_length=64)], db: Session = Depends(get_db)):
     try:
         rec = recommendation_service.generate_recommendation(db, user_id, _llm_client)
     except FeatureDataNotBuiltError as e:
@@ -41,7 +43,7 @@ def create_recommendation(user_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/recommendations", response_model=RecommendationHistoryResponse)
-def get_recommendation_history(user_id: str, db: Session = Depends(get_db)):
+def get_recommendation_history(user_id: Annotated[str, Query(max_length=64)], db: Session = Depends(get_db)):
     try:
         recs = recommendation_service.get_recommendation_history(db, user_id)
     except recommendation_service.UserNotFoundError as e:
@@ -52,7 +54,7 @@ def get_recommendation_history(user_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/recommendations/{recommendation_id}/feedback", response_model=RecommendationResponse)
-def submit_feedback(recommendation_id: str, payload: FeedbackRequest, db: Session = Depends(get_db)):
+def submit_feedback(recommendation_id: Annotated[str, Path(max_length=64)], payload: FeedbackRequest, db: Session = Depends(get_db)):
     try:
         rec = recommendation_service.update_recommendation_status(db, recommendation_id, payload.status)
     except recommendation_service.UnknownRecommendationError as e:

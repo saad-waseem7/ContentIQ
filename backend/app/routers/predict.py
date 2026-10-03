@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app import recommendation_service
@@ -11,7 +13,7 @@ router = APIRouter()
 
 
 @router.post("/predict", response_model=PredictResponse)
-def predict_idea(user_id: str, payload: PredictRequest, db: Session = Depends(get_db)):
+def predict_idea(user_id: Annotated[str, Query(max_length=64)], payload: PredictRequest, db: Session = Depends(get_db)):
     try:
         result = recommendation_service.score_custom_idea(db, user_id, payload.model_dump())
     except FeatureDataNotBuiltError as e:

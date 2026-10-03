@@ -53,6 +53,28 @@ def test_predict_rejects_invalid_platform():
     assert resp.status_code == 422
 
 
+def test_predict_rejects_oversized_caption_and_topic():
+    client = TestClient(app)
+    too_long_caption = dict(VALID_PAYLOAD, sample_caption="x" * 5001)
+    too_long_topic = dict(VALID_PAYLOAD, primary_topic_tag="t" * 201)
+    assert client.post(f"/predict?user_id={uuid.uuid4()}", json=too_long_caption).status_code == 422
+    assert client.post(f"/predict?user_id={uuid.uuid4()}", json=too_long_topic).status_code == 422
+
+
+def test_predict_rejects_oversized_user_id():
+    client = TestClient(app)
+    resp = client.post(f"/predict?user_id={'u' * 65}", json=VALID_PAYLOAD)
+    assert resp.status_code == 422
+
+
+def test_predict_accepts_long_but_reasonable_input_at_the_limits():
+    from app.schemas import PredictRequest
+
+    req = PredictRequest(**dict(VALID_PAYLOAD, sample_caption="x" * 5000, primary_topic_tag="t" * 200))
+    assert len(req.sample_caption) == 5000
+    assert len(req.primary_topic_tag) == 200
+
+
 def test_predict_404_when_user_has_no_winning_content(tmp_path, monkeypatch):
     user_id = str(uuid.uuid4())
     rows = [_make_row(user_id, str(uuid.uuid4()), performance_z=-1.0, label=False)]

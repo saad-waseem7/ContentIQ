@@ -8,7 +8,6 @@ Validates output against the SAME closed lists already enforced elsewhere
 import json
 import concurrent.futures
 import re
-import time
 
 from pydantic import BaseModel, ValidationError, field_validator
 
@@ -230,7 +229,6 @@ def generate_ideas(
     ideas: list[dict | None] = [None] * n
     errors: list[str] = []
 
-    start = time.perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=n) as executor:
         future_to_index = {
             executor.submit(
@@ -244,12 +242,8 @@ def generate_ideas(
                 ideas[idx] = future.result()
             except IdeaGenerationError as e:
                 errors.append(str(e))
-    elapsed = time.perf_counter() - start
 
     successful = [idea for idea in ideas if idea is not None]
-    print(
-        f"[generate_ideas] {len(successful)}/{n} candidates generated concurrently in {elapsed:.2f}s"
-    )
 
     if not successful:
         raise IdeaGenerationError(

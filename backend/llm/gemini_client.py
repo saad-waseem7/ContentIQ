@@ -27,7 +27,13 @@ class GeminiClient(LLMClient):
 
     def generate(self, prompt: str) -> str:
         try:
-            response = self._model.generate_content(prompt)
+            # Explicit per-call deadline, and the SDK's own retry disabled: coach.py already
+            # retries (MAX_ATTEMPTS), so a stalled provider is bounded to
+            # MAX_ATTEMPTS * timeout instead of the SDK default of retrying for minutes.
+            response = self._model.generate_content(
+                prompt,
+                request_options={"timeout": settings.gemini_timeout_sec, "retry": None},
+            )
             text = response.text  # raises if blocked by safety filters / empty
         except Exception as e:
             raise LLMGenerationError(f"Gemini API call failed or was blocked: {e}") from e

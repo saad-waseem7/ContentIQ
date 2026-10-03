@@ -1,5 +1,4 @@
 import threading
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -53,10 +52,7 @@ def load_feature_table(features_path: Optional[Path] = None) -> pd.DataFrame:
         if cached is not None and cached[0] == mtime:
             return cached[1]
 
-    start = time.perf_counter()
     df = pd.read_parquet(path)
-    elapsed = time.perf_counter() - start
-    print(f"[load_feature_table] CACHE MISS — read {len(df)} rows from disk in {elapsed:.4f}s")
 
     with _feature_table_cache_lock:
         _feature_table_cache[key] = (mtime, df)

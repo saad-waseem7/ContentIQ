@@ -103,3 +103,17 @@ def test_metric_timezone_mismatch_is_a_validation_error_not_a_crash():
     with pytest.raises(ValidationError):
         ContentIngest(**base, posted_at=naive_post, metrics=[{"captured_at": datetime(2026, 1, 1, tzinfo=timezone.utc)}])
 
+
+def test_ingest_rejects_oversized_text_fields():
+    uid = "00000000-0000-0000-0000-000000000001"
+    assert client.post("/ingest", json={"user": {"niche": "n" * 201}}).status_code == 422
+    assert client.post("/ingest", json={"user": {"niche": "fitness", "goal": "g" * 501}}).status_code == 422
+    assert client.post(
+        "/ingest", json={"channel": {"user_id": uid, "platform": "instagram", "handle": "h" * 201}}
+    ).status_code == 422
+
+    content = {"channel_id": uid, "content_type": "carousel", "posted_at": "2026-01-01T12:00:00Z"}
+    assert client.post("/ingest", json={"content": dict(content, caption="c" * 5001)}).status_code == 422
+    assert client.post("/ingest", json={"content": dict(content, title="t" * 301)}).status_code == 422
+    assert client.post("/ingest", json={"content": dict(content, topic_tags=["a"] * 101)}).status_code == 422
+    assert client.post("/ingest", json={"content": dict(content, hashtags=["h" * 201])}).status_code == 422

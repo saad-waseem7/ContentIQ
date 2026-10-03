@@ -1,6 +1,5 @@
 import json
 import threading
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -56,9 +55,7 @@ def load_classifier():
         if cached is not None and cached[0] == mtime:
             return cached[1]
 
-    start = time.perf_counter()
     model = joblib.load(MODEL_PATH)
-    print(f"[load_classifier] CACHE MISS — loaded from disk in {time.perf_counter() - start:.4f}s")
 
     with _artifact_cache_lock:
         _classifier_cache[key] = (mtime, model)

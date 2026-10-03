@@ -169,6 +169,38 @@ def test_503_when_model_artifacts_missing(tmp_path, monkeypatch):
     assert resp.status_code == 503
 
 
+def test_502_when_llm_provider_fails_or_times_out(tmp_path, monkeypatch):
+    from llm.base import LLMGenerationError
+
+    class _TimingOutClient:
+        def __init__(self):
+            self.calls = 0
+
+        def generate(self, prompt: str) -> str:
+            self.calls += 1
+            raise LLMGenerationError("Gemini API call failed or was blocked: 504 Deadline Exceeded")
+
+    user_id = str(uuid.uuid4())
+    _create_db_user(user_id)
+    rows = [_make_row(user_id, str(uuid.uuid4()), performance_z=2.0, label=True) for _ in range(5)]
+    monkeypatch.setattr(leaderboard_service, "FEATURES_PATH", _write_features(tmp_path, rows))
+
+    import app.routers.recommend as recommend_router
+    client_stub = _TimingOutClient()
+    monkeypatch.setattr(recommend_router, "_llm_client", client_stub)
+
+    resp = TestClient(app).post(f"/recommend?user_id={user_id}")
+
+    assert resp.status_code == 502
+    assert "Deadline Exceeded" in resp.json()["detail"]
+    assert client_stub.calls == 6  # 3 candidates x MAX_ATTEMPTS, then a clean failure
+
+
+def test_recommend_rejects_oversized_user_id():
+    resp = TestClient(app).post(f"/recommend?user_id={'u' * 65}")
+    assert resp.status_code == 422
+
+
 def test_404_without_calling_llm_when_user_missing_from_db(tmp_path, monkeypatch):
     import app.routers.recommend as recommend_router
     llm = _CountingClient()

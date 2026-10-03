@@ -153,7 +153,6 @@ Optional commands:
 
 ```bash
 docker compose exec api python scripts/verify_mlflow.py
-docker compose exec api python scripts/evaluate_recommendations.py
 docker compose exec api python scripts/train_model_pca_experiment.py
 ```
 

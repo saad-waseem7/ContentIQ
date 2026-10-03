@@ -1,22 +1,32 @@
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Annotated, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from app.models import PLATFORMS, CONTENT_TYPES, HOOK_TYPES
 
+# Boundary limits for user-controlled text. Set well above any real platform value
+# (e.g. Instagram captions cap at 2,200 characters, YouTube descriptions at 5,000).
+MAX_SHORT_TEXT = 200      # niche, handle, topic tags, hashtags
+MAX_TITLE_TEXT = 300      # content title
+MAX_GOAL_TEXT = 500       # creator goal
+MAX_LONG_TEXT = 5000      # captions
+MAX_TAG_LIST_ITEMS = 100  # hashtags / topic_tags per post
+
+ShortText = Annotated[str, Field(max_length=MAX_SHORT_TEXT)]
+
 
 class UserIngest(BaseModel):
     id: Optional[uuid.UUID] = None
-    niche: str
-    goal: Optional[str] = None
+    niche: str = Field(max_length=MAX_SHORT_TEXT)
+    goal: Optional[str] = Field(default=None, max_length=MAX_GOAL_TEXT)
 
 
 class ChannelIngest(BaseModel):
     id: Optional[uuid.UUID] = None
     user_id: uuid.UUID
     platform: str
-    handle: str
+    handle: str = Field(max_length=MAX_SHORT_TEXT)
     follower_count: Optional[int] = None
 
     @field_validator("platform")
@@ -50,10 +60,10 @@ class ContentIngest(BaseModel):
     id: Optional[uuid.UUID] = None
     channel_id: uuid.UUID
     content_type: str
-    title: Optional[str] = None
-    caption: Optional[str] = None
-    hashtags: Optional[list[str]] = None
-    topic_tags: Optional[list[str]] = None
+    title: Optional[str] = Field(default=None, max_length=MAX_TITLE_TEXT)
+    caption: Optional[str] = Field(default=None, max_length=MAX_LONG_TEXT)
+    hashtags: Optional[list[ShortText]] = Field(default=None, max_length=MAX_TAG_LIST_ITEMS)
+    topic_tags: Optional[list[ShortText]] = Field(default=None, max_length=MAX_TAG_LIST_ITEMS)
     hook_type: Optional[str] = None
     duration_sec: Optional[int] = None
     posted_at: datetime
@@ -233,9 +243,9 @@ class PredictRequest(BaseModel):
     hook_type: str
     content_type: str
     platform: str
-    primary_topic_tag: str
+    primary_topic_tag: str = Field(max_length=MAX_SHORT_TEXT)
     duration_sec: Optional[int] = None
-    sample_caption: str
+    sample_caption: str = Field(max_length=MAX_LONG_TEXT)
 
     @field_validator("hook_type")
     @classmethod
