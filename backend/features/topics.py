@@ -3,7 +3,7 @@ from collections.abc import Iterable
 
 
 def normalize_topic(tag: str) -> str:
-    """Lowercases and joins words with underscores, so 'Quick Recipes' == 'quick_recipes'."""
+    """Lowercase the tag and replace spaces or hyphens with underscores."""
     return re.sub(r"[\s\-]+", "_", tag.strip().lower())
 
 

@@ -70,8 +70,7 @@ def test_clustering_unavailable_when_no_real_structure():
         "performance_z": [0.0] * len(embeddings_map),
     })
     result, label_df = clustering.compute_niche_clusters(embeddings_map, niche_df)
-    # Pure noise SHOULD produce a low silhouette score most of the time,
-    # but this isn't a hard mathematical guarantee for every possible seed.
+    # Random data can exceed the cutoff for some seeds, so only check unavailable results.
     if result["available"] is False:
         assert result["reason_unavailable"] is not None
         assert label_df is None
@@ -126,7 +125,8 @@ def test_cluster_cache_invalidated_when_feature_rows_change_with_same_embedding_
     embeddings_map, labels_true = _make_separated_embeddings()
     calls = _patch_cluster_db(monkeypatch, embeddings_map)
     niche_df = _make_niche_df(labels_true, {0: "carousel", 1: "text", 2: "image", 3: "short_video"})
-    rebuilt_df = niche_df.assign(performance_z=niche_df["performance_z"] + 0.25)  # features.parquet was rebuilt
+    # Simulate changed feature rows while keeping the embedding count fixed.
+    rebuilt_df = niche_df.assign(performance_z=niche_df["performance_z"] + 0.25)
 
     r1, _ = clustering.load_and_compute_niche_clusters(None, "fitness", niche_df)
     r2, _ = clustering.load_and_compute_niche_clusters(None, "fitness", rebuilt_df)
@@ -142,7 +142,7 @@ def test_cluster_cache_invalidated_when_embedding_count_changes(monkeypatch):
     niche_df = _make_niche_df(labels_true, {0: "carousel", 1: "text", 2: "image", 3: "short_video"})
 
     clustering.load_and_compute_niche_clusters(None, "fitness", niche_df)
-    embeddings_map["new_post"] = next(iter(embeddings_map.values()))  # new content was embedded
+    embeddings_map["new_post"] = next(iter(embeddings_map.values()))  # Simulate one more embedded post.
     clustering.load_and_compute_niche_clusters(None, "fitness", niche_df)
 
     assert calls["load"] == 2    

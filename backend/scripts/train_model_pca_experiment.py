@@ -1,17 +1,7 @@
-"""
-Week 5 PCA-on-embeddings experiment — kept for documentation/reproducibility
-ONLY. This is NOT part of the default training pipeline (scripts/train_model.py)
-and is never invoked automatically.
+"""Optional PCA-on-embeddings experiment, separate from default training.
 
-Result (see project notes): PCA on caption embeddings, fit on train-split only,
-32 components (PRD's own figure), explained_variance_ratio ~0.997.
-Outcome: ROC-AUC 0.7462 -> 0.7287, Spearman 0.3583 -> 0.3411 — both metrics
-regressed slightly. Decision: reverted from the shipped model. This script
-exists only so the experiment can be re-run exactly if needed later.
-
-Writes to backend/data/experiments/ — a SEPARATE path from the default
-pipeline's artifacts (backend/data/classifier.joblib etc.) — so running this
-can never silently overwrite the production model.
+PCA is fit on training-split content IDs and saved under data/experiments,
+separate from the default classifier artifacts.
 """
 import hashlib
 import json

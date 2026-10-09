@@ -1,10 +1,7 @@
-"""
-Week 4 data prep: load the Week 3 feature table, drop unlabeled rows, split
-temporally per user (PRD: train = earlier posts, test = later posts), and
-build LightGBM-ready X matrices with correct categorical dtypes.
+"""Prepare labeled feature rows for LightGBM training.
 
-Kept separate from train.py so split/leakage-exclusion logic is independently
-testable — same reasoning as builder.py's pure-function split.
+Keep splitting and leakage exclusions separate from model fitting so they
+can be tested without training a model.
 """
 import pandas as pd
 
@@ -20,11 +17,7 @@ def load_labeled_feature_table(path: str) -> pd.DataFrame:
 
 
 def temporal_train_test_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Split independently WITHIN each user's own timeline, then concatenate —
-    not a single global date cutoff. Users' posting histories don't share a
-    calendar (Week 2's generator spread each user's posts randomly across the
-    past year), so a global cutoff would arbitrarily starve some users'
-    training data while barely touching others'."""
+    """Split each user's timeline independently because their posting dates differ."""
     train_parts, test_parts = [], []
     for _, group in df.sort_values("posted_at").groupby("user_id", sort=False):
         n_test = max(1, int(len(group) * cfg.TEST_FRACTION_PER_USER))

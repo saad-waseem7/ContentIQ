@@ -45,12 +45,10 @@ CONTENT_TYPE_EFFECTS = {
     ("tiktok", "short_video"): {"views_multiplier": 3.0},
 }
 
-# Was Tue/Thu, 7-9pm only (~2.4% of posts). Broadened to weekday evenings,
-# a wider but still-plausible "prime posting time" window (~20% of posts),
-# so the label's positive class has enough structured mass to be learnable.
+# Boost weekday posts timestamped in hours 17 through 20, about 12% of random timestamps.
 BOOST_WEEKDAYS = [0, 1, 2, 3, 4]  # Monday-Friday
 BOOST_HOURS = range(17, 21)  # 5pm-9pm
-TIME_BOOST_MULTIPLIER = 1.8  # was 2.5 — lower per-post boost, but now hits ~8x more posts
+TIME_BOOST_MULTIPLIER = 1.8  # Lower boost, applied across five times as many weekday-hour slots.
 
 # The hidden planted signal: (niche, hook_type, topic_tag) -> multiplier
 # Used to verify that training recovers known niche-specific performance patterns.
@@ -62,11 +60,7 @@ PLANTED_SIGNAL = {
     "personal_finance": {"hook_type": "story", "topic_tag": "debt_payoff", "multiplier": 5.0},
 }
 
-# Pareto shape parameter for power-law base performance draw.
-# Lower alpha = heavier tail (more extreme viral outliers). 1.5 is a standard
-# choice for social-media-style engagement power laws (not derived from real data,
-# since this is synthetic — picked to produce a visibly heavy tail without
-# absurd outliers that would break downstream aggregate stats)
+# Lower alpha gives a heavier tail; 3 is chosen for outliers without overwhelming aggregates.
 
 PARETO_ALPHA = 3  
 

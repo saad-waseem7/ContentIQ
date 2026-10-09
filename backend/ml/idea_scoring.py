@@ -20,18 +20,9 @@ class ModelArtifactsNotFoundError(Exception):
     """classifier.joblib / category_levels.json missing — run scripts/train_model.py."""
 
 
-# mtime-keyed in-memory cache — same rationale as leaderboard_service's
-# feature table cache. A recommendation call scores 3 candidates; without
-# this, that's 3 separate joblib.load() calls (deserializing the whole
-# LightGBM booster) per single Generate click. classifier.joblib only
-# changes when scripts/train_model.py reruns.
-#
-# Thread safety: LightGBM's Booster.predict/predict_proba is read-only
-# inference against an already-fitted model — no mutation happens after
-# load, so concurrent reads from multiple FastAPI threadpool threads are
-# expected to be safe. This is standard practice for serving a cached model,
-# but has not been independently stress-tested under heavy concurrent load
-# in this project — flagging as an assumption, not a proven guarantee.
+# Recommendations score multiple candidates with the same artifacts, so mtime caching
+# avoids deserializing the model for each candidate. Concurrent predictions share the fitted
+# booster; read-only inference is assumed safe but has not been stress-tested under heavy load.
 _classifier_cache: dict[str, tuple[float, object]] = {}
 _category_levels_cache: dict[str, tuple[float, dict]] = {}
 _artifact_cache_lock = threading.Lock()

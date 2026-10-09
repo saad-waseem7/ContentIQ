@@ -32,11 +32,7 @@ export function signed(z: number): string {
   return `${z >= 0 ? "+" : ""}${z.toFixed(2)}`;
 }
 
-/**
- * Conclusion -> metric -> sample size, per the human-readable requirement.
- * Never renders raw "n=" notation. z is a standard-deviation-from-baseline
- * value (see PRD) — never rescaled to a 0-10 score or percentage here.
- */
+/** Format performance as baseline standard deviations and a post count. */
 export function describePerformance(z: number, n: number): {
   direction: "above" | "below" | "even";
   sdLine: string;

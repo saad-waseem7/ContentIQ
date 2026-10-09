@@ -1,8 +1,4 @@
-"""
-Provider-agnostic LLM interface. No vendor SDK is imported here or anywhere
-else in the recommendation pipeline — concrete implementations plug in later
-once a provider is chosen.
-"""
+"""Vendor-neutral interface used by the recommendation pipeline."""
 
 from abc import ABC, abstractmethod
 

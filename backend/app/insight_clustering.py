@@ -1,18 +1,8 @@
-"""
-Week 6 topic clustering — KMeans over caption embeddings, scoped to a
-SINGLE NICHE's population, not per-user: at 150-200 posts, a per-user
-clustering would be too thin to be stable, and topic vocabulary is
-inherently niche-specific anyway, making niche-level pooling the more
-defensible statistical unit.
+"""Cluster caption embeddings across each niche and summarize valid feature rows.
 
-Split into a pure function (compute_niche_clusters, no DB access) and a
-thin DB-loading wrapper — same pattern as features/builder.py's
-compute_feature_table vs build_feature_table split, kept here for the
-same reason: the pure function is directly unit-testable.
-
-Deliberately NOT using an LLM to label clusters — each cluster is
-described by its own deterministic majority content_type/hook_type/topic,
-computed from the same rows that were clustered.
+Pooling posts by niche provides a larger sample than per-user clustering,
+while keeping topic vocabulary scoped to its niche. Cluster summaries use
+majority content type, hook type, and topic rather than LLM-generated labels.
 """
 import threading
 from collections import Counter
@@ -28,11 +18,8 @@ from sqlalchemy.orm import Session
 from app import insight_config as cfg
 from app import models
 
-# Cached by niche. The entry is valid only while BOTH inputs are unchanged: the number of
-# embedded posts in Postgres (new content was ingested) and a fingerprint of the feature rows
-# the cluster statistics are computed from (features.parquet was rebuilt). Checking costs one
-# COUNT query; the embeddings themselves are loaded only on a miss. What is worth caching is
-# the KMeans sweep (up to 4 k-values x n_init=10 = up to 40 fits).
+# Cache per niche using the embedded-post count and a lightweight feature-row fingerprint.
+# Checking the key costs one COUNT query; embeddings are loaded and KMeans runs only on a miss.
 _cluster_cache: dict[str, tuple[tuple, dict, Optional[pd.DataFrame]]] = {}
 _cluster_cache_lock = threading.Lock()
 
@@ -55,7 +42,7 @@ def _count_niche_embeddings(db: Session, niche: str) -> int:
 
 
 def _feature_fingerprint(niche_df: pd.DataFrame) -> tuple:
-    """Cheap identity of the feature rows behind the cluster statistics."""
+    """Build a key from row count, content IDs, and the performance_z total."""
     if niche_df.empty:
         return (0, 0, 0.0)
     ids = int(pd.util.hash_pandas_object(niche_df["content_id"], index=False).sum())

@@ -17,15 +17,7 @@ from llm.base import LLMClient, LLMGenerationError
 
 MAX_ATTEMPTS = 2
 
-# Each candidate in a multi-candidate request gets one of these strategic
-# directives, discovered necessary by the Recommendation Quality Evaluation:
-# identical prompts across candidates produced near-paraphrases (100% same
-# hook_type, 100% same topic, 88% same content_type, avg score spread 0.076).
-# These are GUIDANCE, not hard category mandates — each explicitly still
-# requires grounding in the same real posts, so if a user's data strongly
-# supports one topic/format, all three can still land there; the directive
-# only gives Gemini permission and a reason to vary presentation where the
-# evidence actually allows it.
+# These directions encourage variety without overriding evidence from the creator's posts.
 STRATEGY_DIRECTIVES = [
     "Strategic direction: propose the SAFEST, most evidence-backed idea — "
     "closely mirror the hook type, content type, and topic that appear most "
@@ -98,9 +90,7 @@ _NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?")
 
 
 def _rationale_is_grounded(rationale: str, grounding_posts: list[dict]) -> bool:
-    """True if every number in the rationale is either a listed performance_z (at the
-    precision the rationale used) or a count of the listed posts. Anything else is a
-    statistic the prompt never provided."""
+    """Accept listed performance_z values at the cited precision and integers from 1 through the post count."""
     z_values = [float(p["performance_z"]) for p in grounding_posts]
     for token in _NUMBER_PATTERN.findall(rationale):
         decimals = len(token.split(".")[1]) if "." in token else 0
@@ -203,7 +193,7 @@ def generate_idea(
 
 
 def _finalize_idea(idea: dict, grounding_posts: list[dict], creator_profile: dict | None) -> dict:
-    """Post-validation fixes that need no extra LLM call."""
+    """Normalize topic spelling and replace an ungrounded rationale with a fallback."""
     topics = (creator_profile or {}).get("topics") or []
     idea["primary_topic_tag"] = match_topic(idea["primary_topic_tag"], topics) or normalize_topic(
         idea["primary_topic_tag"]
@@ -220,10 +210,10 @@ def generate_ideas(
     n: int,
     creator_profile: dict | None = None,
 ) -> list[dict]:
-    """Generate candidates concurrently; each retains generate_idea's validation and retries.
+    """Generate candidates concurrently and keep successful results when others fail.
 
-    The client must support concurrent calls. Current clients are stateless
-    per-request wrappers; only total failure across all candidates raises.
+    The shared client must support concurrent calls. IdeaGenerationError from one
+    candidate is tolerated unless every candidate fails.
     """
     directives = [STRATEGY_DIRECTIVES[i % len(STRATEGY_DIRECTIVES)] for i in range(n)]
     ideas: list[dict | None] = [None] * n

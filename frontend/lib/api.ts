@@ -144,9 +144,8 @@ async function handle<T>(res: Response): Promise<T> {
   return res.json();
 }
 
-// Full-URL keys keep users' responses separate; the short TTL bounds staleness
-// for changes outside this client, while in-flight requests are deduplicated.
-// Mutations invalidate affected history immediately.
+// Full-URL keys separate users' responses; the short TTL bounds staleness for external changes.
+// On mutation success, invalidate affected history. The in-flight map deduplicates GETs.
 const CACHE_TTL_MS = 30_000;
 const _requestCache = new Map<string, { timestamp: number; data: unknown }>();
 const _inFlight = new Map<string, Promise<unknown>>();
@@ -206,8 +205,7 @@ export async function getRecommendationHistory(userId: string): Promise<Recommen
 export async function generateRecommendation(userId: string): Promise<RecommendationResponse> {
   const res = await fetch(`${BASE_URL}/recommend?user_id=${encodeURIComponent(userId)}`, { method: "POST" });
   const data = await handle<RecommendationResponse>(res);
-  // A new recommendation changes this user's history — invalidate so the
-  // next History visit reflects it instead of showing stale cached data.
+  // Remove this user's cached history after creating a recommendation.
   invalidateCache(`${BASE_URL}/recommendations?user_id=${encodeURIComponent(userId)}`);
   return data;
 }
@@ -219,9 +217,7 @@ export async function submitFeedback(recommendationId: string, status: "actioned
     body: JSON.stringify({ status }),
   });
   const data = await handle<RecommendationResponse>(res);
-  // Status changed — invalidate ALL cached history entries (we don't know
-  // which user this recommendation belongs to from here without another
-  // call, and this is cheap/safe to do broadly).
+  // The feedback response has no user_id, so invalidate all cached history entries.
   invalidateCache(`${BASE_URL}/recommendations?`);
   return data;
 }

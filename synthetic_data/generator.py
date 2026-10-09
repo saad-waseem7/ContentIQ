@@ -28,7 +28,7 @@ def random_posted_at() -> datetime:
 def compute_base_performance() -> float:
     """Pareto-distributed base performance ratio (engagement / reach), heavy-tailed."""
     raw = (np.random.pareto(cfg.PARETO_ALPHA) + 1) * 0.02
-    return min(raw, 1.0)  # cap at 100% engagement rate, a ratio can't exceed reach
+    return min(raw, 1.0)  # Bound the base draw; time and planted effects are applied later.
 
 
 def apply_effects(base_perf: float, niche: str, platform: str, content_type: str, hook_type: str, topic_tag: str, posted_at: datetime) -> float:

@@ -32,11 +32,7 @@ export function signed(z: number): string {
   return `${z >= 0 ? "+" : ""}${z.toFixed(2)}`;
 }
 
-/**
- * Conclusion -> metric -> sample size, per the human-readable requirement.
- * Never renders raw "n=" notation. z is a standard-deviation-from-baseline
- * value (see PRD) — never rescaled to a 0-10 score or percentage here.
- */
+/** Format performance as baseline standard deviations and a post count. */
 export function describePerformance(z: number, n: number): {
   direction: "above" | "below" | "even";
   sdLine: string;
@@ -55,13 +51,7 @@ export function describePerformance(z: number, n: number): {
   return { direction, sdLine, postsLine: `Based on ${n} post${n === 1 ? "" : "s"}` };
 }
 
-// Recommendation idea_text is stored server-side as a single opaque string:
-// "[content_type / hook_type hook / topic] caption" (see
-// recommendation_service.py::_format_idea_text). The backend value is never
-// changed — this only reformats it for display, parsing the bracket and
-// running each token through the existing label() utility. Falls back to
-// the raw string unchanged if the format doesn't match, so malformed or
-// future formats never crash or show "undefined".
+// Parse the stored bracket format for display; return other strings unchanged.
 export function formatIdeaText(ideaText: string): string {
 
   const match = ideaText.match(/^\[(.+?)\s*\/\s*(.+?)\s*\/\s*(.+?)\]\s*([\s\S]*)$/);

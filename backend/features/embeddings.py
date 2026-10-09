@@ -8,8 +8,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.crud import bulk_update_content_embeddings
 
-# MiniLM's 384-dimensional output matches content.caption_embedding; it is
-# the smaller of the embedding models considered for this feature.
+# This model's 384-dimensional output matches the database vector column.
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 
 
@@ -25,7 +24,7 @@ def build_embedding_text(title: Optional[str], caption: Optional[str]) -> str:
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
     model = get_model()
-    # Unit vectors make cosine similarity a dot product during feature computation.
+    # Normalize each caption so high-magnitude vectors do not dominate the winner centroid.
     vectors = model.encode(texts, batch_size=32, show_progress_bar=False, normalize_embeddings=True)
     return vectors.tolist()
 

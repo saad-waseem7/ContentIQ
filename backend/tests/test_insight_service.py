@@ -41,7 +41,7 @@ def test_personal_patterns_marks_standout_correctly():
 
 
 def test_personal_patterns_has_no_content_type_dimension():
-    # performance_z is normalized within each content type, so its per-type mean is ~0 by construction
+    # Each format has its own baseline, so these scores do not compare absolute format performance.
     df = pd.DataFrame([_row("u1", f"c{i}", 1, 1.5) for i in range(6)])
     assert "content_type" not in svc.personal_pattern_insights(df)["dimensions"]
 
@@ -107,7 +107,7 @@ def test_niche_comparison_reports_engagement_ratio_against_same_format_posts():
 
 
 def test_niche_comparison_ignores_performance_z_entirely():
-    # Identical z-scores everywhere (what per-creator normalization produces) but 10x the engagement.
+    # Similar relative scores can coexist with very different absolute engagement rates.
     user_df, niche_df = _niche_frames(user_raw=0.50, other_raw=0.05, user_z=0.07, other_z=0.08)
     assert svc.niche_comparison(user_df, niche_df, "u1")["engagement_ratio"] == 10.0
 

@@ -21,9 +21,7 @@ export function RecommendationProvider({ children }: { children: ReactNode }) {
   const userIdRef = useRef(userId);
   userIdRef.current = userId;
 
-  // Leak prevention: if the globally selected user changes away from whoever
-  // this recommendation belongs to, clear it — never display one user's
-  // recommendation while a different user is selected.
+  // Drop the active card when the selected user no longer owns it.
   useEffect(() => {
     if (ownerUserId !== null && userId !== ownerUserId) {
       setActiveRecommendationState(null);

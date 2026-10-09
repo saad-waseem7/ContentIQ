@@ -1,10 +1,4 @@
-"""
-GET /content - Content Performance Leaderboard.
-
-Serves the Week 3/4 feature table as a per-user ranked leaderboard.
-Read-only, no new modeling or DB schema. See leaderboard_service.py's
-module docstring for the known batch-artifact limitation.
-"""
+"""Read-only leaderboard endpoint backed by the precomputed feature table."""
 from fastapi import APIRouter, HTTPException, Query
 
 from app import leaderboard_service

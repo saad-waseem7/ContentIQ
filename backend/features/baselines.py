@@ -7,9 +7,7 @@ from features.common import compute_performance_raw
 from app import models
 from app.crud import upsert_user_baseline
 
-# A (user, platform, content_type) group needs at least this many posts before
-# its median/p25/p75 mean anything — 1-2 data points produce a meaningless "quartile."
-# Not specified by the PRD; picked as the smallest number where a quartile split isn't degenerate.
+# The PRD does not set a cutoff; require three posts before storing a group's quartiles.
 MIN_POSTS_FOR_BASELINE = 3
 
 
@@ -57,8 +55,7 @@ def _load_latest_metric_per_content(db: Session) -> pd.DataFrame:
     for col in ("likes", "comments", "shares", "saves", "reach"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Keep only the latest snapshot per content_id — a post's most mature/cumulative
-    # performance is what should feed the baseline, not an early partial reading.
+    # Use each post's latest snapshot so baselines reflect the most recent metrics available.
     df = df.sort_values("captured_at").groupby("content_id", as_index=False).tail(1)
     return df
 

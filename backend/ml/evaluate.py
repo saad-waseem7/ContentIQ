@@ -21,11 +21,7 @@ def spearman_within_user(
     predicted_col: str,
     min_rows: int = cfg.MIN_TEST_ROWS_FOR_SPEARMAN,
 ) -> float:
-    """Mean of per-user Spearman rho, per PRD 'within-user Spearman ρ'.
-    Users with fewer than min_rows test points are excluded. A user whose
-    actual/predicted values are constant across their test rows produces an
-    undefined correlation by definition (not a bug) — ConstantInputWarning
-    is expected and suppressed here; the resulting NaN is already excluded below."""
+    """Average per-user Spearman rho, excluding small groups and undefined correlations."""
     rhos = []
     for _, group in df.groupby("user_id"):
         if len(group) < min_rows:

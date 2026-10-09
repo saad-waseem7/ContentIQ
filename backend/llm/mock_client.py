@@ -1,8 +1,4 @@
-"""
-Deterministic mock client. Used for tests and to run the full pipeline
-end-to-end with no real provider configured yet. Swappable for a real
-LLMClient implementation with zero changes anywhere else — see base.py.
-"""
+"""Deterministic LLMClient for tests and local runs without a provider."""
 
 import json
 import re
@@ -27,7 +23,7 @@ class MockLLMClient(LLMClient):
 
     def generate(self, prompt: str) -> str:
         response = dict(self._response)
-        # Cite a number that is actually in the prompt, like a well-behaved real model would.
+        # Use a performance_z value from the prompt so the mock passes rationale grounding.
         match = re.search(r"performance_z=(-?\d+\.\d+)", prompt)
         if "rationale" not in self._overrides and match:
             response["rationale"] = (

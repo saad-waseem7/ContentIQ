@@ -1,9 +1,4 @@
-"""
-Config for the Week 6 Insight Engine. Kept separate from insight_service.py's
-logic — same convention as features/config.py vs builder.py, ml/config.py
-vs ml/*.py. Every threshold here exists to enforce one explicit principle:
-never present a statistically weak group as a strong insight.
-"""
+"""Thresholds for Insight aggregation and clustering, kept separate from service logic."""
 
 """
 Dataset-scale review (post 125-user / 5-niche / ~21.5k-post expansion):

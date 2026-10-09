@@ -3,7 +3,7 @@ SELECT niche, COUNT(*) AS user_count
 FROM users
 GROUP BY niche
 ORDER BY niche;
--- Expect: 3 rows (fitness, food, tech), each ~5+ (accumulated dev-DB rows included)
+-- Expect all five configured niches; counts may include rows from earlier runs.
 
 -- 2. Posts per user — every user should have >= 150
 SELECT u.id, u.niche, COUNT(c.id) AS post_count
@@ -13,7 +13,7 @@ JOIN content c ON c.channel_id = ch.id
 GROUP BY u.id, u.niche
 ORDER BY post_count ASC
 LIMIT 10;
--- Expect: minimum post_count >= 150 (excluding the earlier 5-post smoke-test user, which you know about)
+-- Generated users have 150-200 posts; manually added test users may have fewer.
 
 -- 3. Platforms and content_types actually used
 SELECT DISTINCT ch.platform FROM channels ch ORDER BY 1;
@@ -60,10 +60,10 @@ JOIN (VALUES
 ) AS sig(niche, hook_type, topic_tag) ON sig.niche = u.niche
 GROUP BY u.niche, is_planted_match
 ORDER BY u.niche, is_planted_match;
--- Expect: for each niche, avg_likes where is_planted_match=true should be roughly
--- 3x higher than where is_planted_match=false (matching the 3.0x multiplier from config.py)
+-- Expect higher avg_likes for matches; config.py applies a 5x multiplier to base performance,
+-- not directly to likes, so the observed ratio will vary with other generated effects.
 
--- 7. Time-boost check — Tue/Thu 7-9pm posts should outperform on average
+-- 7. Compare Tue/Thu posts at hours 19-20; other boosted hours remain in the comparison group.
 SELECT
   (EXTRACT(DOW FROM c.posted_at) IN (2, 4) AND EXTRACT(HOUR FROM c.posted_at) BETWEEN 19 AND 20) AS is_boost_window,
   AVG(m.likes) AS avg_likes,
@@ -71,6 +71,4 @@ SELECT
 FROM content c
 JOIN metrics m ON m.content_id = c.id
 GROUP BY is_boost_window;
--- Expect: is_boost_window=true shows higher avg_likes than false, roughly ~1.4x
--- Note: Postgres EXTRACT(DOW) is 0=Sunday..6=Saturday, so Tue=2, Thu=4 here —
--- different indexing than Python's weekday() used in generator.py (Mon=0), same calendar days
+-- Postgres EXTRACT(DOW) is 0=Sunday..6=Saturday, unlike Python weekday() (Monday=0).

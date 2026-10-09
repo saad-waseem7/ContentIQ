@@ -1,12 +1,4 @@
-"""
-SHAP explainability for the Week 4 classifier — PRD's interpretability
-requirement and its explicit acceptance line: "model recovers the planted
-signal." TreeExplainer, not KernelExplainer — exact and fast for
-gradient-boosted trees, the standard choice for this model family.
-
-Computed on the held-out TEST set only, consistent with why the eval split
-exists: an explanation should reflect data the model didn't fit on.
-"""
+"""Explain classifier predictions with TreeSHAP on held-out test rows."""
 import warnings
 
 import numpy as np
@@ -35,10 +27,7 @@ def global_feature_importance(shap_values: np.ndarray, feature_names: list[str])
 def planted_signal_shap_check(
     shap_values: np.ndarray, X_test: pd.DataFrame, test_df: pd.DataFrame, planted_signal: dict
 ) -> pd.DataFrame:
-    """Per niche: mean SHAP contribution of primary_topic_tag and hook_type,
-    comparing planted-match rows vs non-match rows in the SAME niche. A model
-    that actually recovered the signal should show a clearly larger positive
-    contribution for matches on both columns."""
+    """Compare mean topic and hook SHAP values for matching and non-matching rows per niche."""
     topic_idx = list(X_test.columns).index("primary_topic_tag")
     hook_idx = list(X_test.columns).index("hook_type")
 

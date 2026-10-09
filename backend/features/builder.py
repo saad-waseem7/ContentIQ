@@ -1,14 +1,10 @@
-"""
-Feature table builder (Week 3).
+"""Build feature rows from content posts with metric data.
 
-Produces one row per content post using ONLY information available strictly
-before that post's posted_at, per PRD (leakage guard).
+History-derived features and labels use strictly earlier posts. The current
+post's metrics supply its performance outcome.
 
-Split into two layers deliberately:
-  - `_load_raw_data(db)` / `_load_embeddings(db)` — DB I/O, returns plain DataFrames/dicts.
-  - `compute_feature_table(raw_df, embeddings)` — pure function, zero DB access.
-    This split exists so the leakage unit test can call the pure function
-    directly on a small synthetic DataFrame, with no live database needed.
+Database loading is separate from ``compute_feature_table`` so leakage tests
+can exercise the feature logic without a live database.
 """
 import uuid
 
@@ -107,9 +103,10 @@ def _compute_expanding_group_stats(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _compute_user_context_features(df: pd.DataFrame) -> pd.DataFrame:
-    """days_since_last_post and content_type_share_recent, per user across all
-    their content (not scoped to platform/content_type — this models general
-    posting cadence, a different concept than the performance-normalization grouping)."""
+    """Compute cadence and recent-format features from each user's earlier posts.
+
+    These span platforms and formats because they describe overall posting behavior.
+    """
     df = df.sort_values(["user_id", "posted_at"]).reset_index(drop=True)
 
     days_since_last = pd.Series(index=df.index, dtype=float)

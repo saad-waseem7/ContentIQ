@@ -95,10 +95,7 @@ it("recommendation persists after simulated navigation away and back (same provi
   fireEvent.click(screen.getByRole("button", { name: /generate recommendation/i }));
   await waitFor(() => expect(screen.getByText(/Test idea text/i)).toBeInTheDocument());
 
-  // Simulating Next.js client-side navigation: the page component unmounts
-  // and remounts, but RecommendationProvider (rendered once in layout.tsx,
-  // outside any single page) does not — this test proves state survives
-  // that specific pattern rather than merely persisting within one render.
+  // This unmounts the whole test root, including the provider; it does not test route-level persistence.
   unmount();
 });
 

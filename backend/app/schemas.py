@@ -5,8 +5,7 @@ from typing import Annotated, Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 from app.models import PLATFORMS, CONTENT_TYPES, HOOK_TYPES
 
-# Boundary limits for user-controlled text. Set well above any real platform value
-# (e.g. Instagram captions cap at 2,200 characters, YouTube descriptions at 5,000).
+# Bound user-controlled text and tag counts at the ingestion boundary.
 MAX_SHORT_TEXT = 200      # niche, handle, topic tags, hashtags
 MAX_TITLE_TEXT = 300      # content title
 MAX_GOAL_TEXT = 500       # creator goal

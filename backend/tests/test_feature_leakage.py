@@ -41,9 +41,7 @@ def _build_scenario(last_post_likes: int) -> pd.DataFrame:
 
 
 def test_early_post_features_unaffected_by_future_post_metrics():
-    """Core leakage guard: an early post's computed features/label must be
-    IDENTICAL regardless of what happens to a LATER post in the same group.
-    If this fails, a feature is peeking at future data."""
+    """Changing the last post's metrics must not change earlier posts' z-scores or labels."""
     baseline_df = _build_scenario(last_post_likes=52)
     viral_df = _build_scenario(last_post_likes=50000)
 

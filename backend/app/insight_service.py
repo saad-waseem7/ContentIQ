@@ -1,9 +1,7 @@
-"""
-Week 6 Insight Engine — user-level, time-series, and niche-comparison
-sections. Deterministic aggregation only; no LLM calls in this module.
-Reuses the exact has_sufficient_group_history + non-null performance_z
-definition of "valid" established in Week 3/4 rather than inventing a
-new one.
+"""Build deterministic user, time-series, and niche insights from feature rows.
+
+Valid rows use the feature table's has_sufficient_group_history flag and
+non-null performance_z values.
 """
 from datetime import timedelta
 
@@ -55,10 +53,8 @@ def _dimension_breakdown(df_valid: pd.DataFrame, column: str, min_n: int) -> lis
 
 def personal_pattern_insights(user_df: pd.DataFrame) -> dict:
     df_valid = _valid_rows(_add_time_window(_add_primary_topic(user_df)))
-    # content_type is deliberately not a dimension: performance_z is normalized within each
-    # (platform, content_type) group, so its mean is ~0 for every content type by construction
-    # and says nothing about which format performs better. The other dimensions cross-cut
-    # those groups, so their means are meaningful.
+    # Exclude content_type: each format has its own baseline, so these z-scores do not compare
+    # formats' absolute engagement rates.
     return {
         "total_posts_analyzed": int(len(df_valid)),
         "dimensions": {
@@ -164,7 +160,7 @@ def niche_comparison(user_df: pd.DataFrame, niche_df: pd.DataFrame, user_id: str
 def niche_top_patterns(niche_df: pd.DataFrame) -> list[dict]:
     df_valid = _valid_rows(_add_primary_topic(niche_df))
     results = []
-    # Same reason as personal_pattern_insights: content_type means are ~0 by construction.
+    # These relative scores do not compare absolute performance between formats.
     for dim in ("hook_type", "primary_topic_tag"):
         for entry in _dimension_breakdown(df_valid, dim, cfg.NICHE_PATTERN_MIN_N):
             results.append({"dimension": dim, **entry})

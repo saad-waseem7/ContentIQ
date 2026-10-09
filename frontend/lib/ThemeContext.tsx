@@ -7,10 +7,7 @@ type Theme = "light" | "dark";
 const ThemeContext = createContext<{ theme: Theme; toggleTheme: () => void } | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  // Initial value read from the DOM, not localStorage directly — the inline
-  // script in layout.tsx's <head> has already applied the correct class by
-  // the time this component mounts, so this just mirrors that state into
-  // React rather than re-deciding it (avoids a mismatch/flash on hydration).
+  // After hydration, mirror the class set by layout.tsx's head script into React state.
   const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => {
