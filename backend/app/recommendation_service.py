@@ -29,7 +29,7 @@ PROFILE_MAX_TOPICS = 25
 
 class CustomIdeaScore(NamedTuple):
     predicted_score: float
-    topic_recognized: bool  # False: the model has never seen this topic, so it was scored as missing
+    topic_recognized: bool  # Unknown topics are encoded as missing during scoring.
 
 
 class NoWinningContentError(Exception):
@@ -92,13 +92,12 @@ def _compute_best_posting_time(winners_df: pd.DataFrame, fallback_hour: int, fal
     return best_hour, best_weekday
 
 def _select_grounding_posts(winners_df: pd.DataFrame) -> pd.DataFrame:
-    """Top winners by performance_z, preferring posts whose baseline had enough history.
+    """Prefer top posts with enough history behind their baseline.
 
-    Early posts are scored against only a few earlier posts, which inflates their z-scores,
-    so they are used only to fill remaining slots.
+    Early posts can have inflated z-scores, so they fill slots only when needed.
     """
     ranked = winners_df
-    if "n_prior_in_group" in winners_df.columns:  # absent in feature tables built before this column existed
+    if "n_prior_in_group" in winners_df.columns:  # Older feature tables may not include history depth.
         ranked = winners_df.assign(_deep=winners_df["n_prior_in_group"] >= MIN_PRIOR_POSTS_FOR_RANKING)
         ranked = ranked.sort_values(["_deep", "performance_z"], ascending=[False, False]).drop(columns="_deep")
         return ranked.head(GROUNDING_TOP_K)
@@ -106,8 +105,7 @@ def _select_grounding_posts(winners_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _build_creator_profile(user_df: pd.DataFrame) -> dict:
-    """The creator's own platform, formats and topics, so the LLM proposes ideas that can be
-    scored against data the model has actually seen."""
+    """Collect the creator's most-used platform, its formats, and frequent topics for the prompt."""
     platform = user_df["platform"].mode().iloc[0]
     formats = user_df.loc[user_df["platform"] == platform, "content_type"].value_counts().index.tolist()
     primary_topics = [t[0] for t in user_df["topic_tags"] if t is not None and len(t) > 0]
@@ -116,8 +114,7 @@ def _build_creator_profile(user_df: pd.DataFrame) -> dict:
 
 
 def _build_base_user_context(db, user_df, winners_df) -> dict:
-    """Fields that do NOT depend on which specific idea is being scored —
-    computed once per request, not once per candidate."""
+    """Build user-level features shared by all candidates in this request."""
     content_ids = [uuid.UUID(cid) for cid in winners_df["content_id"]]
     embeddings_map = _get_content_embeddings(db, content_ids)
     centroid = np.mean(list(embeddings_map.values()), axis=0) if embeddings_map else None
@@ -229,10 +226,7 @@ def generate_recommendation(db: Session, user_id: str, llm_client: LLMClient) ->
 
 
 def score_custom_idea(db: Session, user_id: str, idea: dict) -> CustomIdeaScore:
-    """Scores a user-supplied idea directly, skipping LLM generation. Reuses
-    the exact same context-building and scoring path generate_recommendation
-    uses for each candidate — only the source of `idea` differs. Not
-    persisted to `recommendations`."""
+    """Score a supplied idea without generating or persisting a recommendation."""
     user_df = get_user_feature_rows(user_id)
     winners_df = user_df[user_df["has_sufficient_group_history"] & (user_df["label_overperformer"] == True)]  # noqa: E712
     if winners_df.empty:

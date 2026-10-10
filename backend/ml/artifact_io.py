@@ -6,11 +6,10 @@ from pathlib import Path
 
 @contextmanager
 def atomic_path(final_path: Path) -> Iterator[Path]:
-    """Yield a temporary sibling path to write to; on clean exit, move it over final_path.
+    """Yield a sibling temp path and replace the destination after a successful write.
 
-    os.replace is atomic on a single filesystem, so a concurrent reader sees either the
-    complete old file or the complete new file, never a partially written one. If the
-    body or the replace raises, final_path is left untouched and the temp file is removed.
+    Same-filesystem replacement keeps readers from seeing a partial artifact. On failure,
+    remove the temp file and leave the existing destination intact.
     """
     tmp_path = final_path.with_name(final_path.name + ".tmp")
     try:

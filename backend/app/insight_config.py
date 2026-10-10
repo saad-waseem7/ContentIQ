@@ -10,15 +10,12 @@ changed on the basis of dataset size alone: these are correctness
 thresholds, not tuning knobs to inflate just because more data exists.
 """
 
-# Stricter than features.config.MIN_GROUP_SIZE_FOR_ZSCORE (3) — that
-# threshold protects the MODEL's training labels from too-few-point groups;
-# this protects a HUMAN-FACING claim, which warrants more evidence.
+# Require more evidence for a displayed pattern than for a training label.
 PERSONAL_PATTERN_MIN_N = 5
 
 TREND_MIN_N_PER_PERIOD = 5
 TREND_RECENT_WINDOW_DAYS = 60
-# Minimum delta (performance_z units) before labeling a direction rather
-# than "stable" — avoids calling ordinary noise a trend.
+# Ignore smaller changes to avoid labeling ordinary variation as a trend.
 TREND_DIRECTION_THRESHOLD = 0.3
 
 MONTHLY_MIN_N = 3
@@ -33,11 +30,7 @@ NICHE_PATTERN_TOP_K = 5
 CLUSTER_MIN_NICHE_POSTS = 100
 CLUSTER_K_RANGE = range(3, 7)
 CLUSTER_MIN_SAMPLES_PER_CLUSTER = 5
-# Judgment call, not derived: silhouette scores on raw high-dimensional
-# sentence embeddings are typically low even for genuinely separable
-# clusters, so this is deliberately more permissive than the textbook
-# "0.5 = good" guideline, which would reject almost everything at this
-# dimensionality.
+# High-dimensional embeddings often have modest silhouette scores even when clusters are useful.
 CLUSTER_SILHOUETTE_MIN = 0.12
 CLUSTER_RANDOM_STATE = 42
 

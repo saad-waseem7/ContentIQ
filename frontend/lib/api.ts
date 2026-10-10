@@ -137,7 +137,7 @@ async function handle<T>(res: Response): Promise<T> {
         detail = d.map((item) => item?.msg).filter(Boolean).join("; ") || detail;
       }
     } catch {
-      // response wasn't JSON — keep statusText
+      // The response wasn't JSON, so keep statusText.
     }
     throw new ApiError(res.status, detail);
   }

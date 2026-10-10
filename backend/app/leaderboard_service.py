@@ -10,21 +10,15 @@ FEATURES_PATH = Path(__file__).resolve().parents[1] / "data" / "features.parquet
 
 
 class FeatureDataNotBuiltError(Exception):
-    """features.parquet doesn't exist yet — run scripts/build_features.py."""
+    """features.parquet is missing; run scripts/build_features.py."""
 
 
 class UnknownUserError(Exception):
     """user_id has no rows in the feature table."""
 
 
-# In-memory cache, keyed by resolved file path, invalidated by mtime — not a
-# TTL. features.parquet only changes when scripts/build_features.py is
-# rerun, which changes its mtime; any other time it's read, the file is
-# byte-identical, so re-parsing it is pure waste. Keying by path (not a
-# single global variable) means tests that monkeypatch FEATURES_PATH to a
-# unique tmp_path per test get their own cache entry, never colliding with
-# the real data or with each other. Lock guards concurrent FastAPI
-# threadpool requests from racing on the dict.
+# Cache parsed tables by resolved path and modification time. Path-scoped entries
+# keep test fixtures separate; the lock protects concurrent cache access.
 _feature_table_cache: dict[str, tuple[float, pd.DataFrame]] = {}
 _feature_table_cache_lock = threading.Lock()
 
@@ -36,8 +30,7 @@ def clear_feature_table_cache() -> None:
 
 
 def load_feature_table(features_path: Optional[Path] = None) -> pd.DataFrame:
-    # Resolved at call time, not bind time — required so tests can monkeypatch
-    # FEATURES_PATH and have it actually take effect on the next call.
+    # Resolve the default at call time so tests can replace FEATURES_PATH.
     path = features_path if features_path is not None else FEATURES_PATH
     if not path.exists():
         raise FeatureDataNotBuiltError(
@@ -60,9 +53,7 @@ def load_feature_table(features_path: Optional[Path] = None) -> pd.DataFrame:
 
 
 def get_user_feature_rows(user_id: str, features_path: Optional[Path] = None) -> pd.DataFrame:
-    """Raw, filtered (not yet ranked/serialized) rows for one user. Shared by
-    build_leaderboard() and recommendation_service, which needs raw columns
-    (follower_count, etc.) the leaderboard's response doesn't expose."""
+    """Return unranked feature rows shared by leaderboard and recommendation generation."""
     df = load_feature_table(features_path)
     user_df = df[df["user_id"] == user_id]
     if user_df.empty:
@@ -76,7 +67,7 @@ def build_leaderboard(user_id: str, features_path: Optional[Path] = None) -> dic
     total_posts_in_history = len(user_df)
 
     ranked_mask = user_df["has_sufficient_group_history"]
-    if "n_prior_in_group" in user_df.columns:  # absent in feature tables built before this column existed
+    if "n_prior_in_group" in user_df.columns:  # Older feature tables may not include history depth.
         ranked_mask = ranked_mask & (user_df["n_prior_in_group"] >= MIN_PRIOR_POSTS_FOR_RANKING)
     ranked_df = user_df[ranked_mask].copy()
     ranked_df = ranked_df.sort_values("performance_z", ascending=False).reset_index(drop=True)

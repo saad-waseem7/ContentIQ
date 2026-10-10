@@ -51,9 +51,7 @@ def test_200_response_shape_with_clustering_stubbed(tmp_path, monkeypatch):
     path = _write_features(tmp_path, rows)
     monkeypatch.setattr(leaderboard_service, "FEATURES_PATH", path)
 
-    # Clustering needs real DB embeddings — isolated from this endpoint test
-    # by stubbing it directly, same isolation principle as the LLM mock in
-    # test_recommend_endpoint.py.
+    # Keep this endpoint test independent of the database embedding query.
     monkeypatch.setattr(
         insight_clustering, "load_and_compute_niche_clusters",
         lambda db, niche, df: ({"available": False, "reason_unavailable": "stubbed for test"}, None)

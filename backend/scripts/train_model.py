@@ -50,10 +50,9 @@ def main():
     regressor = train_regressor(X_train, y_reg_train)
 
     category_levels = {col: X_full[col].cat.categories.tolist() for col in cfg.CATEGORICAL_FEATURES}
-    # Levels are written before the model. A reader that lands between the two replaces
-    # sees (old model, new levels), which is safe when a retrain adds categories: the old
-    # model already treats them as unknown. The reverse order would score a category the
-    # new model knows as missing. (A retrain that removes a category has the opposite risk.)
+    # Write levels first: during a category-adding retrain, the old model treats new levels as
+    # unknown. Reversing the order can make the new model receive categories as missing; removals
+    # have the corresponding compatibility risk.
     with atomic_path(CATEGORY_LEVELS_PATH) as tmp_path:
         tmp_path.write_text(json.dumps(category_levels))
     with atomic_path(MODEL_ARTIFACT_PATH) as tmp_path:

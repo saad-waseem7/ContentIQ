@@ -157,7 +157,7 @@ def test_load_feature_table_uses_cache_on_second_call(tmp_path, monkeypatch):
 
     df1 = leaderboard_service.load_feature_table(path)
     df2 = leaderboard_service.load_feature_table(path)
-    assert df1 is df2  # same object returned — proves the second call didn't re-read the file
+    assert df1 is df2  # A cache hit returns the same DataFrame object.
 
 
 def test_load_feature_table_reloads_after_file_changes(tmp_path, monkeypatch):

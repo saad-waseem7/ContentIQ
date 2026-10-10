@@ -137,10 +137,7 @@ def _compute_user_context_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _compute_semantic_similarity_feature(df: pd.DataFrame, embeddings: dict) -> pd.DataFrame:
-    """Cosine similarity between this post's embedding and the centroid of the
-    SAME user's prior posts labeled overperformer. Requires label_overperformer
-    already computed (leakage-safe) — this feature inherits that guarantee since
-    it only ever looks at strictly prior posts too."""
+    """Compare each embedding with its user's centroid of strictly prior overperforming posts."""
     df = df.sort_values(["user_id", "posted_at"]).reset_index(drop=True)
     similarity = pd.Series(index=df.index, dtype=float)
 

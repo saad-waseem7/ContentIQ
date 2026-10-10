@@ -114,11 +114,9 @@ def monthly_performance(user_df: pd.DataFrame) -> list[dict]:
 
 
 def niche_comparison(user_df: pd.DataFrame, niche_df: pd.DataFrame, user_id: str) -> dict:
-    """Compares absolute engagement rate (performance_raw) with other creators' posts of the
-    same platform and content type.
+    """Compare absolute engagement rates with peers posting on the same platform and format.
 
-    performance_z cannot be used here: it is measured against each creator's own history, so
-    its mean is ~0 for every creator whether they perform well or badly.
+    Performance z-scores are creator-relative and cannot compare absolute engagement.
     """
     user_valid = _valid_rows(user_df)
     others_valid = _valid_rows(niche_df[niche_df["user_id"] != user_id])

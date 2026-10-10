@@ -7,16 +7,12 @@ from features.common import compute_performance_raw
 from app import models
 from app.crud import upsert_user_baseline
 
-# The PRD does not set a cutoff; require three posts before storing a group's quartiles.
+# Require three observations before storing group quartiles.
 MIN_POSTS_FOR_BASELINE = 3
 
 
 def _load_latest_metric_per_content(db: Session) -> pd.DataFrame:
-    """
-    One row per content: its user_id/platform (via channel), content_type, and its
-    most recent metric snapshot. Content with zero metric rows is excluded —
-    there's nothing to compute a baseline from yet.
-    """
+    """Return one row per post using its latest metrics; omit posts without metrics."""
     rows = db.execute(
         select(
             models.Content.id.label("content_id"),
@@ -61,9 +57,7 @@ def _load_latest_metric_per_content(db: Session) -> pd.DataFrame:
 
 
 def compute_and_store_baselines(db: Session) -> int:
-    """Computes the CURRENT (all-history) baseline per (user, platform, content_type)
-    and upserts it into user_baselines. This is a serving-time snapshot, not used
-    for leakage-safe training labels — see the feature builder for that."""
+    """Upsert all-history baselines for serving; training labels use prior-only feature baselines."""
     df = _load_latest_metric_per_content(db)
     if df.empty:
         return 0

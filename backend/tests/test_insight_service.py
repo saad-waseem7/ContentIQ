@@ -119,8 +119,7 @@ def test_niche_comparison_only_compares_posts_of_the_same_platform_and_content_t
 
 
 def test_niche_comparison_ranks_a_10x_creator_above_peers_using_real_expanding_z_scores():
-    """Property check against the real feature pipeline: the old z-based comparison scored this
-    creator ~equal to (or below) their peers."""
+    """Absolute engagement should rank a higher-performing creator above peers."""
     import numpy as np
     from features.builder import _compute_expanding_group_stats
 

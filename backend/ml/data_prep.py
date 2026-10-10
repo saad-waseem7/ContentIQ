@@ -27,8 +27,7 @@ def temporal_train_test_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFr
 
 
 def prepare_model_matrix(df: pd.DataFrame) -> pd.DataFrame:
-    """Selects ONLY leakage-safe feature columns, sets pandas 'category' dtype
-    for LightGBM's native categorical handling."""
+    """Select model features and set categorical columns for LightGBM."""
     df = df.copy()
     df["primary_topic_tag"] = df["topic_tags"].apply(lambda tags: tags[0] if tags is not None and len(tags) > 0 else "none")
 

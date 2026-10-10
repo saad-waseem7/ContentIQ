@@ -1,9 +1,4 @@
-"""
-Prompt construction + idea generation for LLM coaching layer.
-Depends only on llm.base.LLMClient's generate() contract — no vendor coupling.
-Validates output against the SAME closed lists already enforced elsewhere
-(app.models.PLATFORMS/CONTENT_TYPES/HOOK_TYPES), not a re-declared copy.
-"""
+"""Build grounded prompts and validate generated ideas against application enums."""
 
 import json
 import concurrent.futures
@@ -17,7 +12,7 @@ from llm.base import LLMClient, LLMGenerationError
 
 MAX_ATTEMPTS = 2
 
-# These directions encourage variety without overriding evidence from the creator's posts.
+# Candidate directions vary the framing while keeping ideas grounded in the same posts.
 STRATEGY_DIRECTIVES = [
     "Strategic direction: propose the SAFEST, most evidence-backed idea — "
     "closely mirror the hook type, content type, and topic that appear most "
@@ -34,8 +29,7 @@ STRATEGY_DIRECTIVES = [
 
 
 class IdeaGenerationError(Exception):
-    """LLM output could not be parsed/validated after MAX_ATTEMPTS tries,
-    or the underlying call failed on every attempt."""
+    """Raised when retries fail to produce a valid idea."""
 
 
 class IdeaOutput(BaseModel):
@@ -90,7 +84,7 @@ _NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?")
 
 
 def _rationale_is_grounded(rationale: str, grounding_posts: list[dict]) -> bool:
-    """Accept listed performance_z values at the cited precision and integers from 1 through the post count."""
+    """Allow listed z-scores at cited precision and integer counts within the grounding set."""
     z_values = [float(p["performance_z"]) for p in grounding_posts]
     for token in _NUMBER_PATTERN.findall(rationale):
         decimals = len(token.split(".")[1]) if "." in token else 0

@@ -26,8 +26,7 @@ def fit_pca(
 def transform_content_ids(
     pca: PCA, content_ids: list, embeddings_map: dict
 ) -> np.ndarray:
-    """Transforms embeddings for the given content_ids using an ALREADY-FITTED
-    pca object — never calls .fit(). Rows with no embedding get NaN."""
+    """Transform available embeddings with a fitted PCA model; leave missing rows as NaN."""
     n_components = pca.n_components_
     result = np.full((len(content_ids), n_components), np.nan)
     valid_positions = [i for i, cid in enumerate(content_ids) if cid in embeddings_map]
@@ -40,6 +39,5 @@ def transform_content_ids(
 
 
 def transform_single_embedding(pca: PCA, embedding: np.ndarray) -> np.ndarray:
-    """Transforms one embedding vector — used by idea_scoring.py for a single
-    hypothetical idea's caption embedding. Never fits, only transforms."""
+    """Transform one candidate caption embedding without fitting PCA."""
     return pca.transform(embedding.reshape(1, -1))[0]

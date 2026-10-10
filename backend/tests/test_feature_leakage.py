@@ -57,8 +57,7 @@ def test_early_post_features_unaffected_by_future_post_metrics():
 
 
 def test_first_posts_in_group_have_no_label_insufficient_history():
-    """First MIN_GROUP_SIZE_FOR_ZSCORE posts can't have a valid label — no
-    prior history to compare against. Confirms these are NaN, not defaulted."""
+    """The first post has no label because it has no prior group history."""
     df = _build_scenario(last_post_likes=52)
     features = compute_feature_table(df, embeddings={}).sort_values("posted_at").reset_index(drop=True)
 

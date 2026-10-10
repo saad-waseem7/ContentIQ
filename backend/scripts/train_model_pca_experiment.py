@@ -23,7 +23,7 @@ from ml.models import train_classifier, train_regressor
 
 FEATURES_PATH = Path(__file__).resolve().parents[1] / "data" / "features.parquet"
 EXPERIMENT_DIR = Path(__file__).resolve().parents[1] / "data" / "experiments"
-PCA_COMPONENTS = 32  # PRD's own stated figure, not tuned
+PCA_COMPONENTS = 32  # Fixed for reproducible experiment runs.
 
 
 def main():

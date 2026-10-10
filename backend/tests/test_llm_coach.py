@@ -19,8 +19,7 @@ GROUNDING_POSTS = [
 
 
 class RecordingClient(LLMClient):
-    """Thread-safe — concurrent generate_ideas() calls this from multiple
-    threads simultaneously."""
+    """Record prompts safely while candidate calls run concurrently."""
     def __init__(self):
         self.prompts = []
         self._lock = threading.Lock()
@@ -36,7 +35,7 @@ def test_generate_ideas_assigns_a_distinct_directive_to_each_candidate():
     generate_ideas(client, niche="fitness", grounding_posts=GROUNDING_POSTS, n=3)
 
     assert len(client.prompts) == 3
-    # Completion order isn't guaranteed under concurrency — check by set
+    # Completion order isn't guaranteed under concurrency; check by set
     # membership, not position.
     for directive in STRATEGY_DIRECTIVES:
         assert any(directive in p for p in client.prompts)
@@ -52,10 +51,7 @@ def test_generate_ideas_cycles_directives_when_n_exceeds_directive_count():
 
 
 def test_generate_ideas_runs_candidates_concurrently_not_sequentially():
-    """Proves real wall-clock benefit, not just correctness. A client with
-    a 0.1s delay per call: 3 sequential calls would take >=0.3s; concurrent
-    execution should complete well under that, with generous margin for
-    thread overhead to avoid flakiness."""
+    """Three delayed calls should take near one call's delay when run concurrently."""
     class SlowClient(LLMClient):
         def generate(self, prompt: str) -> str:
             time.sleep(0.1)

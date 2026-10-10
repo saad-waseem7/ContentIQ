@@ -18,9 +18,7 @@ from ml import idea_scoring
 
 
 class _StubClassifierAscendingScores:
-    """Returns increasing scores on successive calls — proves the endpoint
-    actually picks the LAST-scored (highest) candidate, not just the first
-    one generated, which would silently pass a weaker test."""
+    """Return increasing scores to verify that selection uses candidate scores."""
     call_count = 0
 
     def predict_proba(self, X):

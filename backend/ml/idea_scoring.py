@@ -17,7 +17,7 @@ CATEGORY_LEVELS_PATH = Path(__file__).resolve().parents[1] / "data" / "category_
 
 
 class ModelArtifactsNotFoundError(Exception):
-    """classifier.joblib / category_levels.json missing — run scripts/train_model.py."""
+    """Model artifacts are missing; run scripts/train_model.py."""
 
 
 # Recommendations score multiple candidates with the same artifacts, so mtime caching

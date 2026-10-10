@@ -11,5 +11,5 @@ class LLMClient(ABC):
 
 
 class LLMGenerationError(Exception):
-    """The LLM call itself failed (network, auth, rate limit, etc.) —
+    """The LLM call itself failed (network, auth, rate limit, etc.),
     distinct from a call that succeeded but returned invalid content."""

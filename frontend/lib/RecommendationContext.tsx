@@ -43,8 +43,7 @@ export function RecommendationProvider({ children }: { children: ReactNode }) {
   }
 
   function clearActiveRecommendation() {
-    // Display-state only — never calls the API, never touches the
-    // persisted recommendations table.
+    // Clearing this card affects display state only; the saved recommendation remains unchanged.
     setActiveRecommendationState(null);
     setOwnerUserId(null);
   }

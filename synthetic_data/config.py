@@ -7,8 +7,7 @@ MAX_POSTS_PER_USER = 200
 
 METRIC_SNAPSHOT_DAYS_AFTER_POST = [1, 3, 7]
 
-# Platforms available per niche, weighted — arbitrary but plausible per-niche skew,
-# not stated in PRD, kept simple rather than exhaustively researched
+# Weighted platform distribution for each synthetic niche.
 NICHE_PLATFORMS = {
     "fitness": {"instagram": 0.4, "youtube_shorts": 0.3, "tiktok": 0.3},
     "food": {"instagram": 0.5, "youtube": 0.2, "tiktok": 0.3},
@@ -37,8 +36,7 @@ TOPIC_TAGS_BY_NICHE = {
     "personal_finance": ["budgeting", "investing_basics", "debt_payoff", "side_hustles", "saving_tips"],
 }
 
-# Content-type performance effects: multiplier applied to specific metrics
-# (instagram, carousel) -> saves-heavy; (youtube_shorts/tiktok, short_video) -> view-heavy
+# Apply metric-specific effects for formats where saves or views are emphasized.
 CONTENT_TYPE_EFFECTS = {
     ("instagram", "carousel"): {"saves_multiplier": 2.5},
     ("youtube_shorts", "short_video"): {"views_multiplier": 3.0},
@@ -48,7 +46,7 @@ CONTENT_TYPE_EFFECTS = {
 # Boost weekday posts timestamped in hours 17 through 20, about 12% of random timestamps.
 BOOST_WEEKDAYS = [0, 1, 2, 3, 4]  # Monday-Friday
 BOOST_HOURS = range(17, 21)  # 5pm-9pm
-TIME_BOOST_MULTIPLIER = 1.8  # Lower boost, applied across five times as many weekday-hour slots.
+TIME_BOOST_MULTIPLIER = 1.8  # Applied to base performance inside the configured time window.
 
 # The hidden planted signal: (niche, hook_type, topic_tag) -> multiplier
 # Used to verify that training recovers known niche-specific performance patterns.
@@ -60,8 +58,7 @@ PLANTED_SIGNAL = {
     "personal_finance": {"hook_type": "story", "topic_tag": "debt_payoff", "multiplier": 5.0},
 }
 
-# Lower alpha gives a heavier tail; 3 is chosen for outliers without overwhelming aggregates.
-
+# Pareto shape parameter for the synthetic base-performance distribution.
 PARETO_ALPHA = 3  
 
 BASE_REACH_MIN = 500

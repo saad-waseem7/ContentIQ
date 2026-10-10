@@ -1,8 +1,4 @@
-"""
-Concrete LLMClient backed by Google AI Studio's Gemini API. Implements the
-same generate() contract as MockLLMClient — nothing in coach.py,
-recommendation_service.py, idea_scoring.py, or the frontend needs to change.
-"""
+"""Gemini implementation of the shared LLMClient interface."""
 import re
 
 import google.generativeai as genai
@@ -10,8 +6,7 @@ import google.generativeai as genai
 from app.config import settings
 from llm.base import LLMClient, LLMGenerationError
 
-# Gemini often wraps JSON output in markdown code fences even when told not
-# to — stripped here so coach.py's json.loads() gets a clean string.
+# Strip markdown fences that Gemini may wrap around JSON responses.
 _FENCE_PATTERN = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 
 
@@ -27,9 +22,7 @@ class GeminiClient(LLMClient):
 
     def generate(self, prompt: str) -> str:
         try:
-            # Explicit per-call deadline, and the SDK's own retry disabled: coach.py already
-            # retries (MAX_ATTEMPTS), so a stalled provider is bounded to
-            # MAX_ATTEMPTS * timeout instead of the SDK default of retrying for minutes.
+            # Let coach.py own retries; the timeout bounds each provider call.
             response = self._model.generate_content(
                 prompt,
                 request_options={"timeout": settings.gemini_timeout_sec, "retry": None},

@@ -23,10 +23,7 @@ def _make_embeddings(n, dim=384, seed=0):
 
 
 def test_fit_pca_depends_only_on_given_content_ids_not_full_map():
-    """Core leakage guarantee: fitting must be identical whether or not
-    test-split embeddings exist elsewhere in the same lookup map — mirrors
-    how train_model.py calls this (passing train-only ids against the FULL
-    embeddings_map, since _load_embeddings has no train/test concept itself)."""
+    """Fitting should depend only on the supplied IDs, even if the map also has other vectors."""
     train_ids, train_map = _make_embeddings(20)
     extra_ids, extra_map = _make_embeddings(20, seed=99)
     full_map = {**train_map, **extra_map}

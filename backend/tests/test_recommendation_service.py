@@ -55,7 +55,7 @@ def test_compute_best_posting_time_falls_back_on_empty_dataframe():
 
 
 def test_compute_best_posting_time_falls_back_when_columns_entirely_absent():
-    winners_df = pd.DataFrame({"content_id": ["c1", "c2"]})  # no posting_hour/posting_day_of_week columns at all
+    winners_df = pd.DataFrame({"content_id": ["c1", "c2"]})  # Exercise tables without posting-time features.
     hour, weekday = _compute_best_posting_time(winners_df, fallback_hour=7, fallback_weekday=2)
     assert hour == 7
     assert weekday == 2

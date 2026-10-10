@@ -7,6 +7,6 @@ def get_llm_client() -> LLMClient:
     if settings.llm_provider == "gemini":
         from llm.gemini_client import GeminiClient
 
-        # google-generativeai package is only required when actually selected
+        # Keep the Gemini SDK optional for users of the mock provider.
         return GeminiClient()
     return MockLLMClient()
