@@ -25,6 +25,9 @@ def ingest(payload: schemas.IngestRequest, db: Session = Depends(get_db)):
             response.metrics_created = metrics_created
 
         db.commit()
+    except crud.DuplicateContentError as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(e))

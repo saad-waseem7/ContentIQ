@@ -26,7 +26,7 @@ class ChannelIngest(BaseModel):
     user_id: uuid.UUID
     platform: str
     handle: str = Field(max_length=MAX_SHORT_TEXT)
-    follower_count: Optional[int] = None
+    follower_count: Optional[int] = Field(default=None, ge=0)
 
     @field_validator("platform")
     @classmethod
@@ -43,15 +43,15 @@ def _as_utc(value: datetime) -> datetime:
 
 class MetricIngest(BaseModel):
     captured_at: datetime
-    impressions: Optional[int] = None
-    reach: Optional[int] = None
-    views: Optional[int] = None
-    likes: Optional[int] = None
-    comments: Optional[int] = None
-    shares: Optional[int] = None
-    saves: Optional[int] = None
-    watch_time_sec: Optional[int] = None
-    avg_pct_watched: Optional[float] = None
+    impressions: Optional[int] = Field(default=None, ge=0)
+    reach: Optional[int] = Field(default=None, ge=0)
+    views: Optional[int] = Field(default=None, ge=0)
+    likes: Optional[int] = Field(default=None, ge=0)
+    comments: Optional[int] = Field(default=None, ge=0)
+    shares: Optional[int] = Field(default=None, ge=0)
+    saves: Optional[int] = Field(default=None, ge=0)
+    watch_time_sec: Optional[int] = Field(default=None, ge=0)
+    avg_pct_watched: Optional[float] = Field(default=None, ge=0)
     followers_gained: Optional[int] = None
 
 
@@ -64,7 +64,7 @@ class ContentIngest(BaseModel):
     hashtags: Optional[list[ShortText]] = Field(default=None, max_length=MAX_TAG_LIST_ITEMS)
     topic_tags: Optional[list[ShortText]] = Field(default=None, max_length=MAX_TAG_LIST_ITEMS)
     hook_type: Optional[str] = None
-    duration_sec: Optional[int] = None
+    duration_sec: Optional[int] = Field(default=None, ge=0)
     posted_at: datetime
     metrics: list[MetricIngest] = Field(default_factory=list)
 
@@ -243,7 +243,7 @@ class PredictRequest(BaseModel):
     content_type: str
     platform: str
     primary_topic_tag: str = Field(max_length=MAX_SHORT_TEXT)
-    duration_sec: Optional[int] = None
+    duration_sec: Optional[int] = Field(default=None, ge=0)
     sample_caption: str = Field(max_length=MAX_LONG_TEXT)
 
     @field_validator("hook_type")

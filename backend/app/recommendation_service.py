@@ -20,7 +20,7 @@ from features.config import MIN_PRIOR_POSTS_FOR_RANKING, RECENT_POSTS_WINDOW
 from features.embeddings import embed_texts
 from llm.base import LLMClient
 from llm.coach import generate_ideas
-from ml.idea_scoring import score_idea, topic_is_known
+from ml.idea_scoring import load_category_levels, load_classifier, score_idea, topic_is_known
 
 GROUNDING_TOP_K = 5
 N_CANDIDATES = 3
@@ -29,7 +29,7 @@ PROFILE_MAX_TOPICS = 25
 
 class CustomIdeaScore(NamedTuple):
     predicted_score: float
-    topic_recognized: bool  # Unknown topics are encoded as missing during scoring.
+    topic_recognized: bool  # False: the model has never seen this topic, so it was scored as missing
 
 
 class NoWinningContentError(Exception):
@@ -92,12 +92,13 @@ def _compute_best_posting_time(winners_df: pd.DataFrame, fallback_hour: int, fal
     return best_hour, best_weekday
 
 def _select_grounding_posts(winners_df: pd.DataFrame) -> pd.DataFrame:
-    """Prefer top posts with enough history behind their baseline.
+    """Top winners by performance_z, preferring posts whose baseline had enough history.
 
-    Early posts can have inflated z-scores, so they fill slots only when needed.
+    Early posts are scored against only a few earlier posts, which inflates their z-scores,
+    so they are used only to fill remaining slots.
     """
     ranked = winners_df
-    if "n_prior_in_group" in winners_df.columns:  # Older feature tables may not include history depth.
+    if "n_prior_in_group" in winners_df.columns:  # absent in feature tables built before this column existed
         ranked = winners_df.assign(_deep=winners_df["n_prior_in_group"] >= MIN_PRIOR_POSTS_FOR_RANKING)
         ranked = ranked.sort_values(["_deep", "performance_z"], ascending=[False, False]).drop(columns="_deep")
         return ranked.head(GROUNDING_TOP_K)
@@ -105,7 +106,8 @@ def _select_grounding_posts(winners_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _build_creator_profile(user_df: pd.DataFrame) -> dict:
-    """Collect the creator's most-used platform, its formats, and frequent topics for the prompt."""
+    """The creator's own platform, formats and topics, so the LLM proposes ideas that can be
+    scored against data the model has actually seen."""
     platform = user_df["platform"].mode().iloc[0]
     formats = user_df.loc[user_df["platform"] == platform, "content_type"].value_counts().index.tolist()
     primary_topics = [t[0] for t in user_df["topic_tags"] if t is not None and len(t) > 0]
@@ -114,7 +116,8 @@ def _build_creator_profile(user_df: pd.DataFrame) -> dict:
 
 
 def _build_base_user_context(db, user_df, winners_df) -> dict:
-    """Build user-level features shared by all candidates in this request."""
+    """Fields that do NOT depend on which specific idea is being scored —
+    computed once per request, not once per candidate."""
     content_ids = [uuid.UUID(cid) for cid in winners_df["content_id"]]
     embeddings_map = _get_content_embeddings(db, content_ids)
     centroid = np.mean(list(embeddings_map.values()), axis=0) if embeddings_map else None
@@ -186,6 +189,10 @@ def generate_recommendation(db: Session, user_id: str, llm_client: LLMClient) ->
     # and features.parquet can list users that no longer exist in Postgres.
     user_uuid = _require_user(db, user_id)
 
+    # Same reason: a missing model would otherwise surface only after the LLM calls were paid for.
+    load_classifier()
+    load_category_levels()
+
     top_k = _select_grounding_posts(winners_df)
     niche = user_df["niche"].iloc[0]
     profile = _build_creator_profile(user_df)
@@ -226,7 +233,10 @@ def generate_recommendation(db: Session, user_id: str, llm_client: LLMClient) ->
 
 
 def score_custom_idea(db: Session, user_id: str, idea: dict) -> CustomIdeaScore:
-    """Score a supplied idea without generating or persisting a recommendation."""
+    """Scores a user-supplied idea directly, skipping LLM generation. Reuses
+    the exact same context-building and scoring path generate_recommendation
+    uses for each candidate — only the source of `idea` differs. Not
+    persisted to `recommendations`."""
     user_df = get_user_feature_rows(user_id)
     winners_df = user_df[user_df["has_sufficient_group_history"] & (user_df["label_overperformer"] == True)]  # noqa: E712
     if winners_df.empty:

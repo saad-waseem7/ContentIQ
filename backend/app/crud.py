@@ -35,9 +35,15 @@ def get_or_create_channel(db: Session, channel_in: schemas.ChannelIngest) -> mod
     return channel
 
 
+class DuplicateContentError(Exception):
+    """A content row with this id already exists. Ingest creates content and never overwrites it."""
+
+
 def create_content_with_metrics(db: Session, content_in: schemas.ContentIngest) -> tuple[models.Content, int]:
     if db.get(models.Channel, content_in.channel_id) is None:
         raise ValueError(f"channel_id {content_in.channel_id} does not exist")
+    if content_in.id is not None and db.get(models.Content, content_in.id) is not None:
+        raise DuplicateContentError(f"content {content_in.id} already exists")
 
     content = models.Content(
         id=content_in.id or uuid.uuid4(),

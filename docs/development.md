@@ -14,7 +14,7 @@ backend/
   llm/            LLMClient interface, prompt and validation (coach.py), Gemini and mock clients
   scripts/        Batch entry points (embeddings, baselines, features, training, MLflow check)
   migrations/     Alembic environment and 3 revisions
-  tests/          pytest suite (19 files)
+  tests/          pytest suite (20 test files plus conftest.py)
   data/           Generated artifacts, gitignored
 frontend/
   app/            Pages: leaderboard, insights, recommend, history, plus layout and root redirect
@@ -77,13 +77,13 @@ There is no linter, formatter or type checker configured for either side. Fronte
 
 | Suite | Command (host) | Count | Where |
 | --- | --- | --- | --- |
-| Backend, pytest | `docker compose exec api pytest -q` | 156 tests | `backend/tests/` |
+| Backend, pytest | `docker compose exec api pytest -q` | 164 tests | `backend/tests/` |
 | Frontend, Vitest and React Testing Library | `docker compose exec frontend npm test` | 62 tests in 12 files | `__tests__/` folders under `frontend/` |
 
 Counts come from collecting the suites in the handover review. How they ran:
 
 - **Frontend:** all 62 passed in a scratch environment.
-- **Backend:** 155 passed and 1 failed in a scratch environment that used real PostgreSQL with pgvector and a stubbed embedding model. The failure was a thread-order-sensitive test around parallel candidate generation. I did not record its exact name, so run the suite a few times before treating a failure there as a regression. It was not fixed because the handover scope excluded code changes. The project owner reported 156 passing under Docker. The Docker run itself was not repeated for this documentation.
+- **Backend:** 164 passed, eight consecutive runs, in a scratch environment with real PostgreSQL 16 with pgvector and a stubbed embedding model (the real model was not downloaded there). Dependency versions in that environment were newer than the pins in `requirements.txt` (for example FastAPI and pandas). The one flaky test found during the handover review was a defect in the test, not the product: its fake LLM assigned captions by call arrival order across parallel threads. It now keys each caption on the strategy directive in the prompt and passed 25 repeated runs. The project owner reported 156 passing under Docker before the handover changes. The Docker run was not repeated.
 
 Backend coverage by area:
 
@@ -106,11 +106,11 @@ Frontend tests cover the four pages, the user selector and user switching, the r
 
 ### Read this before running the backend suite
 
-- **It writes to the database that `DATABASE_URL` points to.** The ingest, recommend-endpoint and history tests create users, channels, content and recommendation rows through the application's database session. They do not roll back. The shipped dataset already contains 28 test users created this way. Do not run the suite against a database you demo from.
+- **It writes to the database that `DATABASE_URL` points to.** Several tests create users, channels, content and recommendation rows through the application's session. `tests/conftest.py` deletes the users that appeared during the run when the session ends (foreign keys cascade). It does not run if the process is killed, and it would also delete a user someone ingests into the same database while the suite is running. Do not run the suite against a database you are demoing from or ingesting into.
 - **It loads the real embedding model** in some tests, so the first run needs the model files (baked into the Docker image).
 - **It needs the migrations applied** to the target database.
 
-A safer pattern is a throwaway database on the same server. Create it, point `DATABASE_URL` at it for one command, migrate and test:
+The safest pattern is still a throwaway database on the same server. Create it, point `DATABASE_URL` at it for one command, migrate and test:
 
 ```bash
 docker compose exec db psql -U contentiq -d contentiq -c "CREATE DATABASE contentiq_test"

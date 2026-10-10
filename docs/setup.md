@@ -24,7 +24,7 @@ The API's settings class (`backend/app/config.py`) reads real environment variab
 | `POSTGRES_PORT` | Compose only | none | Host port published for the database. Compose fails to interpolate the port mapping if it is unset. |
 | `DATABASE_URL` | Yes | none | API, Alembic, scripts. Inside Docker the host is `db` and the port is `5432` regardless of `POSTGRES_PORT`. |
 | `MLFLOW_TRACKING_URI` | Yes | none | `train_model.py`, `verify_mlflow.py`. `http://mlflow:5000` inside Docker. |
-| `LLM_PROVIDER` | No | `mock` | `gemini` selects Gemini. Any other value, including a typo, selects the mock. |
+| `LLM_PROVIDER` | No | `mock` | `mock` or `gemini`, case-insensitive. Any other value stops the API at startup with `LLM_PROVIDER must be one of ...`. |
 | `GEMINI_API_KEY` | When `LLM_PROVIDER=gemini` | empty | Gemini client |
 | `GEMINI_MODEL` | No | `gemini-3.6-flash` | Gemini client. Set it to a model your key can call. |
 | `GEMINI_TIMEOUT_SEC` | No | `30` | Per-call deadline in seconds for each Gemini request |
@@ -36,8 +36,8 @@ The five required API variables (`DATABASE_URL`, the three `POSTGRES_*` names an
 ### Using the example files safely
 
 - **Root `.env.example`.** Copy it to `.env` and change the password. Keep `DATABASE_URL` consistent with the user, password and database name you set. If 5432 is busy on the host, change only `POSTGRES_PORT`.
-- **`backend/.env.example`.** Do not copy it unchanged. Its `DATABASE_URL` uses port 5433, which is a host port and is wrong inside the Docker network, and it sets `LLM_PROVIDER=gemini` with placeholder values. With a placeholder key the API starts but every `/recommend` call fails with 502. With an empty key the API refuses to start. This file is only useful if you run the backend outside Docker, and then you must set `DATABASE_URL` to a host and port reachable from your shell.
-- **`frontend/.env.local.example`.** Its values are placeholders (`https://api.example.com` and `User123`). Copying it unchanged points the browser at a host that does not exist. Skip the file for the Docker setup. If you create it, use values like `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`. Next.js reads it when the dev server starts, so restart the frontend container after editing.
+- **`backend/.env.example`.** Optional. It is meant for running the API outside Docker: `DATABASE_URL` points at `localhost:5432` and `MLFLOW_TRACKING_URI` at `http://localhost:5001`, and the LLM is the mock. Adjust the port to your `POSTGRES_PORT`. Inside Docker the root `.env` wins over this file, so copying it there is harmless but pointless.
+- **`frontend/.env.local.example`.** Optional. It points the browser at `http://localhost:8000`, which is what the Docker setup publishes. `NEXT_PUBLIC_DEFAULT_USER_ID` is commented out. Next.js reads the file when the dev server starts, so restart the frontend container after editing.
 - Never commit real values. `.env`, `backend/.env` and `frontend/.env.local` are covered by `.gitignore`, but check `git status` before committing.
 
 ### Gemini
@@ -103,9 +103,10 @@ Docker is the supported route. The following works if you need a native setup. I
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | API container exits with `ValidationError ... Field required` | A required variable is missing from the root `.env` | Compare with `.env.example`. |
+| API exits with `ValueError: LLM_PROVIDER must be one of ('mock', 'gemini')` | Typo in `LLM_PROVIDER` | Fix the value in `.env` and recreate the API container |
 | API exits with `ValueError: GEMINI_API_KEY is not set` | `LLM_PROVIDER=gemini` with an empty key | Set the key, or set `LLM_PROVIDER=mock`. |
 | `503 Feature table not found at ... Run scripts/build_features.py first.` | `backend/data/features.parquet` does not exist | Run the pipeline from step 5 of the README. |
-| `503 Classifier not found at ... Run scripts/train_model.py first.` | No trained model. For `/recommend` this is raised after the LLM calls have already been made. | Run `train_model.py`. |
+| `503 Classifier not found at ... Run scripts/train_model.py first.` | No trained model. `/recommend` checks for it before it calls the LLM. | Run `train_model.py`. |
 | `404 No content found for user_id ...` | The ID is mistyped, is not a UUID, or is not in the feature table (creator ingested after the last `build_features.py`, or no posts with usable metrics) | Check the ID, then rebuild features. |
 | `404 User ... has no top-performing content yet ...` | The creator has no post labeled as an over-performer | Pick a creator with more history. |
 | `404 No user found with id ...` on `/recommend` or `/recommendations` | The creator is in `features.parquet` but not in PostgreSQL, usually after `down -v` | Rerun the pipeline. |
@@ -117,4 +118,4 @@ Docker is the supported route. The following works if you need a native setup. I
 | `vitest: not found` when running `npm test` on the host | `node_modules` not installed on the host | `cd frontend && npm ci`, or run the tests in the container. |
 | `npm run build` fails fetching fonts | `next/font/google` downloads Inter at build time | Build with internet access. |
 | The first `/recommend` or `/predict` after a restart is slow | The embedding model is loaded on first use | Expected. Later calls reuse it. |
-| Backend tests leave extra users in the database | The ingest test writes to the configured database | See [development.md](development.md#testing). |
+| Backend tests wrote to your database | The suite uses the database in `DATABASE_URL`. It deletes the users it created when it finishes, but not if the run is killed. | See [development.md](development.md#testing). |

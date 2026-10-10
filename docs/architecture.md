@@ -46,7 +46,7 @@ The classifier is the only model used at serving time. A LightGBM regressor is t
 
 Because `./backend` is bind-mounted, the files in `backend/data/` live on your host, not in a Docker volume. They survive `docker compose down -v`; the database does not. See [setup.md](setup.md#resetting-state).
 
-There is no `.dockerignore`, so `COPY . .` in both Dockerfiles copies whatever is in the build context, including a local `backend/.env`. Do not push images built on a machine that holds real keys.
+`backend/.dockerignore` and `frontend/.dockerignore` keep `.env` files, virtual environments, `node_modules`, `.next`, caches and `backend/data` out of the image build context. Compose still passes the root `.env` to the containers at runtime, and the bind mounts expose your working tree to them.
 
 ## Where state lives
 

@@ -1,6 +1,6 @@
 # Limitations, security considerations and deferred work
 
-This is the honest list. Items were found by reading the code and, where noted, by running it during the handover review. Nothing here has been fixed, because the handover scope excluded code changes. Read it before you reuse any part of the project.
+This is the honest list. Items were found by reading the code and, where noted, by running it during the handover review. Read it before you reuse any part of the project. A short list of defects that were fixed during the handover is under [Fixed during the handover](#fixed-during-the-handover); everything else below is still open.
 
 How to read the labels: **verified** means observed in the code or reproduced by running it. **Not verified** means stated from reading code or from the project owner and not exercised.
 
@@ -27,11 +27,29 @@ The project has no security model beyond input validation. Do not expose it to a
 | Default credentials and exposed port | `.env.example` is meant to be edited, but the database port is published on the host, and a weak password makes it reachable from other machines on the network. |
 | CORS | Allows `http://localhost:3000` only, hard-coded in `app/main.py`. Deploying anywhere else requires a code change. |
 | Development servers | Compose runs `uvicorn --reload` and `next dev`. They are not hardened, and `./backend` and `./frontend` are bind-mounted into the containers. |
-| Secrets in images | There is no `.dockerignore`. `COPY . .` copies a local `backend/.env` and `backend/.venv` into the API image, and the frontend image copies `frontend/.env.local`. An image built on a machine that holds real keys contains them. |
+| Secrets in images | `backend/.dockerignore` and `frontend/.dockerignore` keep local `.env` files and virtual environments out of image builds. Compose still injects the root `.env` at runtime, so never push or share a container filesystem or volume that holds real keys. |
 | No TLS, no security headers, no request-size limits beyond field limits | Not configured. |
 | Per-process caches and a shared model | Safe with the single-process compose setup. Multi-worker behavior and heavy concurrent use were not tested. |
 
 Before sharing a ZIP or a repository, check that `.env`, `backend/.env` and `frontend/.env.local` are not included. The ZIP supplied for this handover contained real `.env` files. They were not read or copied into the documentation, but if the project has been shared in that form, rotate any key that was in them.
+
+## Fixed during the handover
+
+These were found in review and corrected, with tests where noted. Behavior changed in the ways listed.
+
+| Was | Now |
+| --- | --- |
+| `POST /ingest` with an existing `content.id` returned 500 | Returns 409 and saves nothing (tested) |
+| `/health` returned 500 when the database was down | Returns 503 `Database is not reachable` (tested) |
+| `/recommend` returned 503 for a missing model only after paying for the LLM calls | Model files are checked first, no provider call is made (tested) |
+| Negative `duration_sec`, counts and follower counts were accepted | Rejected with 422. `followers_gained` may still be negative (tested) |
+| A typo in `LLM_PROVIDER` silently selected the mock | The API refuses to start, naming the allowed values (tested) |
+| One backend test failed intermittently | The test's fake LLM depended on thread arrival order. It now keys on the strategy directive. The product code was not at fault |
+| The backend suite left test users in the database | `tests/conftest.py` removes users created during the run |
+| `backend/.env.example` and `frontend/.env.local.example` broke the Docker setup if copied | Rewritten to be safe to copy |
+| No `.dockerignore` | Added for `backend/` and `frontend/` |
+| `validate.sql` check 7 used a window that did not match the generator | Uses Monday to Friday, 17:00 to 20:59 |
+| `.gitignore` excluded `docs/`, so documentation could not be committed | The `docs/` rule was removed |
 
 ## Defects and rough edges
 
@@ -39,14 +57,9 @@ All **verified** by code reading unless stated.
 
 ### API behavior
 
-- **Duplicate content ID returns 500.** `POST /ingest` inserts content without checking for an existing ID and the database integrity error is not handled.
 - **`/ingest` is create or return, not upsert.** A repeated user or channel ID returns the existing row and silently ignores the other submitted fields.
-- **Missing model returns 503 only after the LLM calls.** In `/recommend`, scoring happens after generation, so with no trained model you pay for the calls and then get a 503.
-- **`/predict` accepts negative `duration_sec`** and any integer. Metric counts and follower counts on `/ingest` also have no range checks.
 - **No platform and format compatibility check.** `/recommend` can propose a format the creator's platform does not support.
-- **`/health` fails with a 500 when the database is down** instead of reporting a degraded status.
 - **Unknown IDs and malformed IDs both give 404** (not 422) on most endpoints.
-- **Typos in `LLM_PROVIDER` silently select the mock.** Only the exact value `gemini` selects Gemini.
 
 ### Recommendations and scoring
 
@@ -73,16 +86,11 @@ All **verified** by code reading unless stated.
 - **Stale `backend/data/` after a database wipe.** The files outlive `docker compose down -v` because they live on the host. The API then lists creators that no longer exist.
 - **The generator is not idempotent** and sends one HTTP request per post.
 - **`user_baselines` is unused.** `compute_baselines.py` fills it, and no application code reads it. It is a leftover of the original design.
-- **`synthetic_data/validate.sql` check 7 understates the planted effect.** It compares Tuesday and Thursday 19:00 to 20:59 against everything else, while the generator boosts Monday to Friday 17:00 to 20:59. Treat that check as indicative only. See [ml-pipeline.md](ml-pipeline.md).
 - **The regressor is trained and tracked, but unused.** Its per-creator Spearman correlation (0.3441 in the reproduced run) is below the 0.40 acceptance threshold.
 
 ### Testing and repository hygiene
 
-- **The backend suite writes to the configured database** and leaves rows behind. The shipped dataset holds 28 such test users. See [development.md](development.md#testing).
-- **One backend test is flaky** under threading (see development.md). It passed in the owner's Docker run.
-- **The tracked example files are traps.** `backend/.env.example` (port 5433, Gemini selected, placeholder key) and `frontend/.env.local.example` (placeholder URLs) break the Docker setup if copied unchanged. See [setup.md](setup.md#using-the-example-files-safely).
 - **No linter, formatter, type checker or pre-commit hooks.**
-- **No `.dockerignore`.**
 - **`temp.txt` in the repository root** is a scratch file with ad hoc SQL. It is gitignored. Do not rely on it.
 - **Local clutter.** Archives of this repository can contain `backend/.venv`, `frontend/node_modules`, `.next`, `.pytest_cache` and `backend/data`. All are gitignored or regenerable. Do not package them.
 
@@ -114,5 +122,5 @@ Items in the original product requirements document, or implied by the code, tha
 
 - Docker Compose was not run. The commands in the README follow `docker-compose.yml`, the Dockerfiles and the scripts. They were checked by reading and not executed in containers.
 - The 125-user dataset was not regenerated. Model metrics in [ml-pipeline.md](ml-pipeline.md) were reproduced by running the training code on the supplied `features.parquet`.
-- A native smoke test (PostgreSQL 16 with pgvector, migrations, a small generated dataset, scripts, API, mock LLM) was run in a scratch environment with the embedding model stubbed. The frontend suite passed there. The backend suite had 155 passing and 1 flaky failure.
+- A native end-to-end run after the fixes: PostgreSQL 16 with pgvector, migrations, a generated dataset of 55 creators and 3,598 posts, all pipeline scripts, the API with the mock LLM (leaderboard, insights, recommend, feedback, history, predict, duplicate ingest, health), with the embedding model stubbed. Backend suite: 164 passed on eight consecutive runs, and no rows left behind. Frontend: 62 tests passed, `tsc --noEmit` clean, `next build` succeeded with the Google Fonts response mocked. Installed library versions were newer than the pins in `requirements.txt`.
 - Real Gemini calls, the real embedding model under load, browser rendering of the frontend, and the GitHub Actions workflow were not exercised.

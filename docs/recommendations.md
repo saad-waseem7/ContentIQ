@@ -26,7 +26,7 @@ Nothing is written until a winner exists. A failure at any step before the inser
 
 1. **Load the creator's rows** from the feature table. Unknown creator: 404.
 2. **Select winners.** Rows where `label_overperformer` is true and `has_sufficient_group_history` is true (at least 3 earlier posts in the group). None: 404 `has no top-performing content yet`.
-3. **Check the user exists in PostgreSQL** before any LLM call. The feature table can list creators that were later deleted from the database, and the foreign key on `recommendations.user_id` would fail at the end. Failing early avoids paying for three LLM calls that cannot be saved.
+3. **Check the user exists in PostgreSQL and the model files exist** before any LLM call. The feature table can list creators that were later deleted from the database, and the foreign key on `recommendations.user_id` would fail at the end. Failing early avoids paying for three LLM calls that cannot be saved. The same applies to a missing classifier: `load_classifier` and `load_category_levels` run before generation, so a missing model gives 503 with no provider calls.
 4. **Pick grounding posts.** Up to 5 winners sorted by `performance_z`, with posts that have at least 10 earlier posts in their group (`MIN_PRIOR_POSTS_FOR_RANKING`) ranked ahead of shallower ones. Early posts have z-scores computed from very few points and are inflated, so they only fill the remaining slots. `n_prior_in_group` is explained in [insights-and-leaderboard.md](insights-and-leaderboard.md#n_prior_in_group).
 5. **Build a creator profile.** The most common platform in the creator's rows, the formats used on that platform (most frequent first) and the creator's 25 most frequent primary topics. The prompt tells the model the platform and asks it to pick a topic from this list. This keeps ideas inside vocabulary the classifier has seen.
 6. **Generate three candidates** with `ThreadPoolExecutor`, one thread each. Each gets a different strategy directive:
@@ -86,7 +86,7 @@ Same context building and scoring as above, with these differences:
 - No LLM call, no database write, no PostgreSQL user check.
 - The platform is taken from the request, not forced to the creator's own.
 - The topic is mapped onto a trained level if it differs only in case, spaces or hyphens. Otherwise `topic_recognized` is `false` and the topic is scored as missing. The frontend shows an amber note in that case.
-- `duration_sec` is optional and accepted without range checks.
+- `duration_sec` is optional and must be zero or greater.
 
 Because the topic only has an effect when it matches something the model saw in training, a typed topic like "morning routine" may have no influence at all. The "Try Your Own Idea" panel says so when it happens.
 
@@ -99,6 +99,6 @@ Because the topic only has an effect when it matches something the model saw in 
 
 - **Cost.** One request makes between 3 and 6 provider calls. There is no rate limit and no authentication.
 - **Latency.** Candidates run in parallel, so latency is roughly one call, up to about two timeouts if the provider stalls (`GEMINI_TIMEOUT_SEC`, default 30). The first request after a restart also loads the embedding model.
-- **Missing model files.** The 503 for a missing classifier is raised during scoring, after the LLM calls were already made.
+- **Missing model files.** The classifier and category levels are loaded before any LLM call, so a missing model returns 503 without spending provider calls.
 - **Provider selection happens at import.** `get_llm_client()` runs once when the router module is imported. Change `LLM_PROVIDER` and recreate the API container.
 - **Concurrency.** The mock and Gemini clients are shared across the three threads. The classifier is shared across requests. Read-only prediction on a shared booster is assumed safe and has not been load tested.

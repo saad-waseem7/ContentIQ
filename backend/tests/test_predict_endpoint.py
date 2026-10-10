@@ -166,3 +166,8 @@ def test_predict_flags_a_topic_the_model_has_never_seen(tmp_path, monkeypatch):
     resp = TestClient(app).post(f"/predict?user_id={user_id}", json=dict(VALID_PAYLOAD, primary_topic_tag="gardening"))
     assert resp.status_code == 200
     assert resp.json()["topic_recognized"] is False
+
+def test_predict_rejects_negative_duration():
+    client = TestClient(app)
+    resp = client.post(f"/predict?user_id={uuid.uuid4()}", json=dict(VALID_PAYLOAD, duration_sec=-1))
+    assert resp.status_code == 422

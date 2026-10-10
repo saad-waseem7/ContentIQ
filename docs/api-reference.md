@@ -43,7 +43,7 @@ Applied by Pydantic at the API boundary and returned as 422 when exceeded.
 | `user_id` query parameter on `/predict`, `/recommend`, `/recommendations` | 64 characters |
 | `recommendation_id` path parameter | 64 characters |
 
-Numeric fields (`duration_sec`, `follower_count`, metric counts) have no range checks. Negative values are accepted.
+`duration_sec`, `follower_count` and the metric counts (`impressions`, `reach`, `views`, `likes`, `comments`, `shares`, `saves`, `watch_time_sec`, `avg_pct_watched`) must be zero or greater, otherwise 422. `followers_gained` may be negative. There are no upper bounds.
 
 ## GET /health
 
@@ -53,7 +53,7 @@ Runs `SELECT 1`.
 {"status": "ok", "database": "connected"}
 ```
 
-An unreachable database is not handled specially and surfaces as a 500.
+An unreachable database returns 503 with `{"detail": "Database is not reachable"}`.
 
 ## POST /ingest
 
@@ -88,12 +88,13 @@ Validation:
 | `content.hook_type` | One of the five hook types, or null |
 | `content.metrics[].captured_at` | Must not be earlier than `content.posted_at` |
 | `channel.user_id`, `content.channel_id` | Must reference an existing record, otherwise 422 with `... does not exist` |
+| `content.id` | If supplied, must not already exist, otherwise 409 |
 | `user.niche` | Free text, not validated against a list |
 
 Behavior to be aware of:
 
 - **Existing records are never updated.** If `user.id` or `channel.id` already exists, the existing row is returned unchanged and the other submitted fields are ignored. The endpoint is create or return, not upsert.
-- **Content always inserts.** Posting a `content.id` that already exists is not handled and returns a 500 (a database integrity error).
+- **Content always inserts.** Posting a `content.id` that already exists returns 409 (`content <id> already exists`) and nothing from that request is saved. Content is never updated.
 - Ingesting data does not change any served result until the pipeline is rerun.
 
 ## GET /content
@@ -195,7 +196,7 @@ Response, 201:
 | 404 | The user is not in the feature table, has no winning posts, or does not exist in PostgreSQL. A malformed ID also returns 404. |
 | 422 | `user_id` missing or longer than 64 characters |
 | 502 | The LLM failed or returned invalid output for all three candidates. Nothing is saved. |
-| 503 | `features.parquet` or the model files are missing. The model check happens after the LLM calls. |
+| 503 | `features.parquet` or the model files are missing. Both are checked before any LLM call. |
 
 ## GET /recommendations
 
@@ -249,7 +250,7 @@ Scores an idea the caller supplies. It builds the creator's context exactly as `
 | `hook_type`, `content_type`, `platform` | Closed lists, as above |
 | `primary_topic_tag` | Required, not blank, at most 200 characters |
 | `sample_caption` | Required, not blank, at most 5,000 characters |
-| `duration_sec` | Optional integer, no range check |
+| `duration_sec` | Optional integer, zero or greater |
 
 Response, 200:
 

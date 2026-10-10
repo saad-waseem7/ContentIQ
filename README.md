@@ -119,7 +119,7 @@ Docker Compose loads the root `.env` into the database and API containers. The A
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` | Database credentials and the host port Compose publishes. |
 | `DATABASE_URL` | Connection string used by the API. Host must be `db`, port `5432`. |
 | `MLFLOW_TRACKING_URI` | `http://mlflow:5000` inside Docker. |
-| `LLM_PROVIDER` | `mock` (default) or `gemini`. Any other value silently selects the mock. |
+| `LLM_PROVIDER` | `mock` (default) or `gemini`. Any other value makes the API refuse to start. |
 | `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_TIMEOUT_SEC` | Used only when `LLM_PROVIDER=gemini`. The timeout defaults to 30 seconds. |
 
 To use Gemini, add these lines to the root `.env` and recreate the API container with `docker compose up -d --force-recreate api`:
@@ -130,16 +130,16 @@ GEMINI_API_KEY=your_key_from_google_ai_studio
 GEMINI_MODEL=a_model_name_your_key_can_use
 ```
 
-The tracked `backend/.env.example` and `frontend/.env.local.example` are not ready to copy as they are. `backend/.env.example` points `DATABASE_URL` at port 5433 and selects Gemini, and `frontend/.env.local.example` contains placeholder URLs. You do not need either file for the Docker setup. [docs/setup.md](docs/setup.md#environment-files) explains how to use them safely. Never commit `.env`, `backend/.env` or `frontend/.env.local`; all three are gitignored.
+`backend/.env.example` and `frontend/.env.local.example` are optional. You do not need either for the Docker setup, and values in the root `.env` take precedence over `backend/.env` inside the containers. [docs/setup.md](docs/setup.md#environment-files) explains when to use them. Never commit `.env`, `backend/.env` or `frontend/.env.local`; all three are gitignored.
 
 ## Tests
 
 ```bash
-docker compose exec api pytest -q            # backend, 156 tests
+docker compose exec api pytest -q            # backend, 164 tests
 docker compose exec frontend npm test        # frontend, 62 tests
 ```
 
-The backend suite writes rows to the database that `DATABASE_URL` points at and loads the real embedding model. Read [docs/development.md](docs/development.md#testing) before running it against data you care about.
+The backend suite writes test rows to the database that `DATABASE_URL` points at and removes the users it created when the run ends. It also loads the real embedding model. Read [docs/development.md](docs/development.md#testing) before running it against data you care about.
 
 ## Documentation
 

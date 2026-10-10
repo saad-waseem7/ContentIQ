@@ -18,7 +18,9 @@ from ml import idea_scoring
 
 
 class _StubClassifierAscendingScores:
-    """Return increasing scores to verify that selection uses candidate scores."""
+    """Returns increasing scores on successive calls — proves the endpoint
+    actually picks the LAST-scored (highest) candidate, not just the first
+    one generated, which would silently pass a weaker test."""
     call_count = 0
 
     def predict_proba(self, X):
@@ -28,24 +30,44 @@ class _StubClassifierAscendingScores:
 
 
 class _ThreeDistinctIdeasClient:
+    """Maps each strategy directive to a fixed caption.
+
+    Candidates are generated in parallel threads, so the order in which calls arrive is not
+    deterministic. Keying on the directive in the prompt keeps candidate i paired with
+    caption i regardless of thread scheduling."""
+
     def __init__(self):
         self.captions = [
             "First candidate idea about transformation.",
             "Second candidate idea, a different angle entirely.",
             "Third candidate idea, yet another take.",
         ]
-        self.call_index = 0
 
     def generate(self, prompt: str) -> str:
         import json
-        caption = self.captions[self.call_index % len(self.captions)]
-        self.call_index += 1
+        from llm.coach import STRATEGY_DIRECTIVES
+        index = next(i for i, directive in enumerate(STRATEGY_DIRECTIVES) if directive in prompt)
         return json.dumps({
             "hook_type": "story", "content_type": "carousel", "platform": "instagram",
             "primary_topic_tag": "transformation", "duration_sec": None,
-            "best_posting_window": "Tuesday 7-9pm", "sample_caption": caption,
+            "best_posting_window": "Tuesday 7-9pm", "sample_caption": self.captions[index],
             "rationale": "Beat your median by 2x based on real data.",
         })
+
+
+def _install_stub_model(tmp_path, monkeypatch):
+    """Writes minimal model artifacts. /recommend checks they exist before it calls the LLM."""
+    import json as json_module
+    import joblib
+
+    joblib.dump(_StubClassifierAscendingScores(), tmp_path / "classifier.joblib")
+    (tmp_path / "category_levels.json").write_text(json_module.dumps({
+        "content_type": ["carousel"], "hook_type": ["story"], "platform": ["instagram"],
+        "niche": ["fitness"], "duration_bucket": ["not_applicable"], "follower_tier": ["5k_to_50k"],
+        "primary_topic_tag": ["transformation"],
+    }))
+    monkeypatch.setattr(idea_scoring, "MODEL_PATH", tmp_path / "classifier.joblib")
+    monkeypatch.setattr(idea_scoring, "CATEGORY_LEVELS_PATH", tmp_path / "category_levels.json")
 
 
 def test_recommend_selects_highest_scored_candidate_not_first(tmp_path, monkeypatch):
@@ -182,6 +204,7 @@ def test_502_when_llm_provider_fails_or_times_out(tmp_path, monkeypatch):
     _create_db_user(user_id)
     rows = [_make_row(user_id, str(uuid.uuid4()), performance_z=2.0, label=True) for _ in range(5)]
     monkeypatch.setattr(leaderboard_service, "FEATURES_PATH", _write_features(tmp_path, rows))
+    _install_stub_model(tmp_path, monkeypatch)
 
     import app.routers.recommend as recommend_router
     client_stub = _TimingOutClient()
@@ -288,3 +311,20 @@ def test_recommend_scores_with_the_creators_platform_and_tells_the_llm_about_it(
     assert len(_PlatformRecordingClassifier.seen_platforms) == 3
     assert set(_PlatformRecordingClassifier.seen_platforms) == {"instagram"}  # never the LLM's tiktok
 
+
+
+def test_503_for_missing_model_is_raised_before_any_llm_call(tmp_path, monkeypatch):
+    import app.routers.recommend as recommend_router
+    llm = _CountingClient()
+    monkeypatch.setattr(recommend_router, "_llm_client", llm)
+
+    user_id = str(uuid.uuid4())
+    _create_db_user(user_id)
+    rows = [_make_row(user_id, str(uuid.uuid4()), performance_z=2.0, label=True)]
+    monkeypatch.setattr(leaderboard_service, "FEATURES_PATH", _write_features(tmp_path, rows))
+    monkeypatch.setattr(idea_scoring, "MODEL_PATH", tmp_path / "nope.joblib")
+
+    resp = TestClient(app).post(f"/recommend?user_id={user_id}")
+
+    assert resp.status_code == 503
+    assert llm.calls == 0

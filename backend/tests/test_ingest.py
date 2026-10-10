@@ -117,3 +117,56 @@ def test_ingest_rejects_oversized_text_fields():
     assert client.post("/ingest", json={"content": dict(content, title="t" * 301)}).status_code == 422
     assert client.post("/ingest", json={"content": dict(content, topic_tags=["a"] * 101)}).status_code == 422
     assert client.post("/ingest", json={"content": dict(content, hashtags=["h" * 201])}).status_code == 422
+
+
+def _create_channel():
+    user_id = client.post("/ingest", json={"user": {"niche": "fitness"}}).json()["user_id"]
+    return client.post(
+        "/ingest", json={"channel": {"user_id": user_id, "platform": "instagram", "handle": "dup_test"}}
+    ).json()["channel_id"]
+
+
+def test_ingest_duplicate_content_id_returns_409_and_keeps_the_original():
+    channel_id = _create_channel()
+    content = {
+        "id": "7d0f3c1e-5b7a-4a43-9c5e-0d6f0f8f0a11",
+        "channel_id": channel_id,
+        "content_type": "carousel",
+        "posted_at": "2026-01-01T12:00:00Z",
+    }
+    first = client.post("/ingest", json={"content": content})
+    second = client.post("/ingest", json={"content": {**content, "title": "second attempt"}})
+
+    assert first.status_code == 201
+    assert second.status_code == 409
+    assert "already exists" in second.json()["detail"]
+
+
+def test_ingest_rejects_negative_counts_and_durations():
+    channel_id = _create_channel()
+    base = {"channel_id": channel_id, "content_type": "short_video", "posted_at": "2026-01-01T12:00:00Z"}
+
+    negative_duration = client.post("/ingest", json={"content": {**base, "duration_sec": -5}})
+    negative_likes = client.post(
+        "/ingest",
+        json={"content": {**base, "metrics": [{"captured_at": "2026-01-02T12:00:00Z", "likes": -1}]}},
+    )
+    negative_followers = client.post(
+        "/ingest", json={"channel": {"user_id": "7d0f3c1e-5b7a-4a43-9c5e-0d6f0f8f0a12", "platform": "x", "handle": "h", "follower_count": -1}}
+    )
+
+    assert negative_duration.status_code == 422
+    assert negative_likes.status_code == 422
+    assert negative_followers.status_code == 422
+
+
+def test_ingest_still_allows_negative_followers_gained():
+    channel_id = _create_channel()
+    resp = client.post(
+        "/ingest",
+        json={"content": {
+            "channel_id": channel_id, "content_type": "image", "posted_at": "2026-01-01T12:00:00Z",
+            "metrics": [{"captured_at": "2026-01-02T12:00:00Z", "followers_gained": -3}],
+        }},
+    )
+    assert resp.status_code == 201

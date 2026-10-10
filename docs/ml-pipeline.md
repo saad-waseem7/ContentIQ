@@ -28,7 +28,7 @@ How a post's engagement is produced:
 
 The planted pairs are fitness (story, transformation), food (listicle, quick_recipes), tech (bold_claim, product_review), beauty (question, skincare_routine) and personal_finance (story, debt_payoff). Captions and titles are templates (`A <content_type> about <topic> for my <niche> audience.`), so the text carries no information beyond content type, topic and niche. Embedding-based features cannot reflect writing quality on this data.
 
-`synthetic_data/validate.sql` holds SQL sanity checks for the generated data (counts per niche, posts per creator, three snapshots per post, skew, planted-signal lift). Its check 7 compares Tuesday and Thursday 19:00 to 20:59 against everything else, which is a narrower window than the generator's real boost (Monday to Friday, 17:00 to 20:59), so it understates the effect.
+`synthetic_data/validate.sql` holds SQL sanity checks for the generated data (counts per niche, posts per creator, three snapshots per post, skew, planted-signal lift). Check 7 compares posts in the generator's boosted window (Monday to Friday, 17:00 to 20:59) with all other posts. It reads three snapshots per post, so use the ratio as an indication, not an exact multiplier.
 
 ## Performance metric
 
