@@ -93,6 +93,18 @@ All **verified** by code reading unless stated.
 - **No linter, formatter, type checker or pre-commit hooks.**
 - **Local clutter.** Archives of this repository can contain `backend/.venv`, `frontend/node_modules`, `.next`, `.pytest_cache` and `backend/data`. All are gitignored or regenerable. Do not package them.
 
+### Real-data caveats
+
+These do not affect the synthetic demo. They matter if real creator data is loaded.
+
+- **Follower count is not historical.** `follower_count` is the channel's current value, applied to every past post. With real data this leaks future information into training and into `follower_tier`.
+- **No metric maturity check.** Only the latest snapshot per post is used. A very recent post is compared against fully matured posts, so it can look worse than it is. The synthetic snapshots (days 1, 3 and 7) plateau quickly, which hides this.
+- **Missing engagement counts as zero.** A post with a reach value but null likes, comments, shares and saves gets an engagement rate of 0 instead of being dropped, which lowers that creator's baseline.
+- **Multi-platform creators.** `/recommend` forces the creator's most common platform and takes `follower_count` from the latest post. The generator creates one channel per creator, so the demo does not hit this.
+- **Future-dated snapshots in the synthetic data.** The generator dates posts relative to the current time, so about 2% of recent posts have snapshots dated after generation time. This is harmless.
+- **Slash in a topic.** The frontend splits the stored idea text on `/`, so a topic that contains a slash would display incorrectly. Topics are normalized, so this is unlikely.
+- **User ID matching is exact.** IDs are compared as plain strings, so an uppercase UUID returns 404 even though it is a valid UUID. The "Viewing user" box now trims whitespace, but it does not change case.
+
 ### LLM provider
 
 - **Gemini model name is not verifiable here.** The default `GEMINI_MODEL` is `gemini-3.6-flash`. Whether your key can call that name was not checked, because the review environment had no outbound access to Google. The owner ran the live Gemini path once manually. Set `GEMINI_MODEL` explicitly.
