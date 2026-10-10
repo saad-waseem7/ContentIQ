@@ -91,7 +91,6 @@ All **verified** by code reading unless stated.
 ### Testing and repository hygiene
 
 - **No linter, formatter, type checker or pre-commit hooks.**
-- **`temp.txt` in the repository root** is a scratch file with ad hoc SQL. It is gitignored. Do not rely on it.
 - **Local clutter.** Archives of this repository can contain `backend/.venv`, `frontend/node_modules`, `.next`, `.pytest_cache` and `backend/data`. All are gitignored or regenerable. Do not package them.
 
 ### LLM provider
