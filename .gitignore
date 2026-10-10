@@ -7,6 +7,5 @@ mlruns/
 backend/data/
 frontend/node_modules/
 frontend/.next/
-docs/
 frontend/.env.local
-temp.txt
+temp/
